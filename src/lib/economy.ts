@@ -122,6 +122,55 @@ export async function canAfford(discordId: string, amount: number) {
   return user.wallet >= amount;
 }
 
+// ---------------- Banking ----------------
+// The bank is theft-proof: /steal only touches wallets. The catch is that
+// spending (shop, stocks, loans, gifts) needs wallet money, so hoarders must
+// withdraw — and walk around robbable — before they can buy anything.
+// Deposits/withdrawals move money between pockets, so they do NOT count
+// towards totalEarned or totalSpent.
+
+/** Moves wallet money into the safe. Pass no amount to deposit everything. */
+export async function depositCash(discordId: string, amount?: number) {
+  const user = await getOrCreateUser(discordId);
+  const moving = amount ?? user.wallet;
+  if (moving <= 0) throw new RangeError("Your wallet is empty — nothing to deposit.");
+  if (moving > user.wallet)
+    throw new RangeError(`You only have ${user.wallet.toLocaleString()} CASH in your wallet.`);
+
+  const [updated] = await prisma.$transaction([
+    prisma.user.update({
+      where: { id: discordId },
+      data: { wallet: { decrement: moving }, bank: { increment: moving } },
+    }),
+    prisma.transaction.create({
+      data: { userId: discordId, amount: -moving, reason: "Bank Deposit" },
+    }),
+  ]);
+  log.info(`${discordId} deposited ${moving} CASH`);
+  return { moved: moving, wallet: updated.wallet, bank: updated.bank };
+}
+
+/** Takes money back out of the safe. Pass no amount to withdraw everything. */
+export async function withdrawCash(discordId: string, amount?: number) {
+  const user = await getOrCreateUser(discordId);
+  const moving = amount ?? user.bank;
+  if (moving <= 0) throw new RangeError("Your bank account is empty — nothing to withdraw.");
+  if (moving > user.bank)
+    throw new RangeError(`You only have ${user.bank.toLocaleString()} CASH in the bank.`);
+
+  const [updated] = await prisma.$transaction([
+    prisma.user.update({
+      where: { id: discordId },
+      data: { bank: { decrement: moving }, wallet: { increment: moving } },
+    }),
+    prisma.transaction.create({
+      data: { userId: discordId, amount: moving, reason: "Bank Withdrawal" },
+    }),
+  ]);
+  log.info(`${discordId} withdrew ${moving} CASH`);
+  return { moved: moving, wallet: updated.wallet, bank: updated.bank };
+}
+
 // ---------------- Donations ----------------
 // Players can gift CASH, but the taxman always takes his cut.
 // The tax is destroyed (not given to anyone) — this quietly fights inflation.

@@ -58,6 +58,8 @@ garnished straight to the lender until the debt is cleared. Debt is capped at
 | Command | What it does |
 | --- | --- |
 | `/balance` | Wallet, bank, net worth, job, level |
+| `/deposit [amount]` | Move CASH into the theft-proof bank (empty = all) |
+| `/withdraw [amount]` | Take CASH back out so you can spend it (empty = all) |
 | `/leaderboard` | Richest, highest net worth, best jobs, best investors, top thieves |
 | `/ping` | Is the bot alive? |
 | `/drop` | (Admins) force a CASH drop in this channel |

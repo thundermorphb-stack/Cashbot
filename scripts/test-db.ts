@@ -8,6 +8,8 @@ import {
   removeCash,
   canAfford,
   computeDonation,
+  depositCash,
+  withdrawCash,
   getOrCreateUser,
   STARTING_BALANCE,
   DONATION_TAX_MIN_PCT,
@@ -52,6 +54,26 @@ check("spending more than you have is blocked", blocked);
 check("canAfford(100) is true", await canAfford(TEST_ID, 100));
 check("canAfford(999999) is false", !(await canAfford(TEST_ID, 999999)));
 
+// 5a. Banking: deposits and withdrawals move money without changing totals.
+const beforeBank = await getOrCreateUser(TEST_ID);
+const dep = await depositCash(TEST_ID, 200);
+check("deposit moves 200 from wallet to bank", dep.wallet === beforeBank.wallet - 200 && dep.bank === 200);
+const wit = await withdrawCash(TEST_ID, 50);
+check("withdraw moves 50 back to the wallet", wit.wallet === dep.wallet + 50 && wit.bank === 150);
+const afterBank = await getOrCreateUser(TEST_ID);
+check(
+  "banking never changes totalEarned/totalSpent",
+  afterBank.totalEarned === beforeBank.totalEarned && afterBank.totalSpent === beforeBank.totalSpent
+);
+let overdraft = false;
+try {
+  await withdrawCash(TEST_ID, 999_999);
+} catch {
+  overdraft = true;
+}
+check("withdrawing more than the bank holds is blocked", overdraft);
+await withdrawCash(TEST_ID); // empty the bank again for the checks below
+
 // 5b. Donation tax always lands between 7% and 10%, and nothing goes missing.
 let taxOk = true;
 for (let i = 0; i < 5000; i++) {
@@ -79,7 +101,8 @@ const logbook = await prisma.transaction.findMany({
   where: { userId: TEST_ID },
   orderBy: { id: "asc" },
 });
-check("exactly 3 transactions were logged", logbook.length === 3);
+// welcome bonus, math, failed steal + 3 bank moves (deposit, withdraw, withdraw-all)
+check("every movement was logged (6 transactions)", logbook.length === 6);
 
 console.log("\nTransaction log for the test user:");
 for (const t of logbook) {
