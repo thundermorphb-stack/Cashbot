@@ -107,6 +107,22 @@ export async function canAfford(discordId: string, amount: number) {
   return user.wallet >= amount;
 }
 
+// ---------------- Donations ----------------
+// Players can gift CASH, but the taxman always takes his cut.
+// The tax is destroyed (not given to anyone) — this quietly fights inflation.
+
+export const DONATION_TAX_MIN_PCT = 7;
+export const DONATION_TAX_MAX_PCT = 10;
+
+/** Works out the tax on a donation. `rng` is injectable for tests. */
+export function computeDonation(amount: number, rng: () => number = Math.random) {
+  const pct =
+    DONATION_TAX_MIN_PCT +
+    Math.floor(rng() * (DONATION_TAX_MAX_PCT - DONATION_TAX_MIN_PCT + 1));
+  const tax = Math.ceil((amount * pct) / 100);
+  return { pct, tax, net: amount - tax };
+}
+
 // ---------------- Inflation ----------------
 // When the server is flooded with CASH, prices rise; when money is scarce,
 // prices fall. This keeps the shop painful no matter how rich everyone gets.

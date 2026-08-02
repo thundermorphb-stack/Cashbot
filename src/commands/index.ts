@@ -19,6 +19,7 @@ import { invest } from "./invest.ts";
 import { portfolio } from "./portfolio.ts";
 import { sell } from "./sell.ts";
 import { leaderboard } from "./leaderboard.ts";
+import { give } from "./give.ts";
 
 export const commands: Command[] = [
   ping,
@@ -37,4 +38,5 @@ export const commands: Command[] = [
   portfolio,
   sell,
   leaderboard,
+  give,
 ];

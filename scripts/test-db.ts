@@ -7,8 +7,11 @@ import {
   addCash,
   removeCash,
   canAfford,
+  computeDonation,
   getOrCreateUser,
   STARTING_BALANCE,
+  DONATION_TAX_MIN_PCT,
+  DONATION_TAX_MAX_PCT,
 } from "../src/lib/economy.ts";
 
 const TEST_ID = "test-user-000";
@@ -48,6 +51,17 @@ check("spending more than you have is blocked", blocked);
 // 5. canAfford answers correctly.
 check("canAfford(100) is true", await canAfford(TEST_ID, 100));
 check("canAfford(999999) is false", !(await canAfford(TEST_ID, 999999)));
+
+// 5b. Donation tax always lands between 7% and 10%, and nothing goes missing.
+let taxOk = true;
+for (let i = 0; i < 5000; i++) {
+  const { pct, tax, net } = computeDonation(1000);
+  if (pct < DONATION_TAX_MIN_PCT || pct > DONATION_TAX_MAX_PCT) taxOk = false;
+  if (net + tax !== 1000) taxOk = false; // recipient's share + tax must equal the gift
+  if (tax < Math.ceil((1000 * DONATION_TAX_MIN_PCT) / 100)) taxOk = false;
+}
+check("donation tax stays within 7-10% and always adds up", taxOk);
+check("donation tax rounds up on small gifts (10 CASH → 1 tax min)", computeDonation(10, () => 0).tax === 1);
 
 // 6. Cooldowns: setting one makes it active; expired ones don't block.
 const { getActiveCooldown, setCooldown } = await import("../src/lib/cooldowns.ts");
