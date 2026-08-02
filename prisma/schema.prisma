@@ -25,6 +25,7 @@ model User {
   job         Job?     @relation(fields: [jobId], references: [id])
   jobRerollsUsed   Int       @default(0) // job rolls used in the current 24h window
   jobRerollsResetAt DateTime? // when the 24h window ends and rolls refresh
+  bonusRolls       Int       @default(0) // extra rolls granted by admins; spent after dailies
   createdAt   DateTime @default(now())
 
   transactions Transaction[]

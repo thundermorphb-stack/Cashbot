@@ -46,7 +46,9 @@ export const job: Command = {
             : "Unemployed — use `/job roll` to get a job!"
         )
         .setFooter({
-          text: `Rolls left today: ${status.remaining}/${ROLLS_PER_DAY}`,
+          text:
+            `Rolls left today: ${status.dailyRemaining}/${ROLLS_PER_DAY}` +
+            (status.bonusRolls > 0 ? ` (+${status.bonusRolls} bonus)` : ""),
         });
 
       await interaction.reply({ embeds: [embed] });
@@ -77,7 +79,7 @@ export const job: Command = {
       .setFooter({
         text:
           rolled.rollsLeft > 0
-            ? `Rolls left today: ${rolled.rollsLeft}/${ROLLS_PER_DAY} — rolling again replaces this job!`
+            ? `Rolls left: ${rolled.rollsLeft} — rolling again replaces this job!`
             : `That was your last roll for today!`,
       });
 

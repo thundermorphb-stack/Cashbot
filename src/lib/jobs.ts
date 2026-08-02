@@ -22,20 +22,36 @@ export function rollRarity(): Rarity {
   return "common"; // can't happen (weights add up to 100), but keeps TypeScript happy
 }
 
-/** How many rolls the user has left today, and when the count refreshes. */
+/**
+ * How many rolls the user has left, and when the daily count refreshes.
+ * `remaining` = free daily rolls + any admin-granted bonus rolls.
+ */
 export async function getRollStatus(userId: string) {
   const user = await getOrCreateUser(userId);
   const now = new Date();
 
-  // If the 24h window has passed (or never started), the counter is fresh.
-  if (!user.jobRerollsResetAt || user.jobRerollsResetAt <= now) {
-    return { used: 0, remaining: ROLLS_PER_DAY, resetAt: null as Date | null };
-  }
+  // If the 24h window has passed (or never started), the daily counter is fresh.
+  const windowActive = user.jobRerollsResetAt && user.jobRerollsResetAt > now;
+  const used = windowActive ? user.jobRerollsUsed : 0;
+  const dailyRemaining = ROLLS_PER_DAY - used;
+
   return {
-    used: user.jobRerollsUsed,
-    remaining: ROLLS_PER_DAY - user.jobRerollsUsed,
-    resetAt: user.jobRerollsResetAt,
+    used,
+    dailyRemaining,
+    bonusRolls: user.bonusRolls,
+    remaining: dailyRemaining + user.bonusRolls,
+    resetAt: windowActive ? user.jobRerollsResetAt : (null as Date | null),
   };
+}
+
+/** Admin action: hand someone extra job rolls (they never expire). */
+export async function grantRolls(userId: string, count: number) {
+  await getOrCreateUser(userId);
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { bonusRolls: { increment: count } },
+  });
+  return user.bonusRolls;
 }
 
 /**
@@ -63,7 +79,9 @@ export async function rollJob(userId: string) {
     create: { name, rarity, bonus: (info.minBonus + info.maxBonus) / 2 },
   });
 
-  // First roll of a fresh window starts a new 24h timer.
+  // Spend a free daily roll first; only dip into bonus rolls when those run out.
+  const usingDailyRoll = status.dailyRemaining > 0;
+  // First daily roll of a fresh window starts a new 24h timer.
   const resetAt = status.resetAt ?? new Date(Date.now() + 24 * 60 * 60_000);
 
   await prisma.user.update({
@@ -71,8 +89,9 @@ export async function rollJob(userId: string) {
     data: {
       jobId: job.id,
       jobBonus: bonus,
-      jobRerollsUsed: status.used + 1,
-      jobRerollsResetAt: resetAt,
+      ...(usingDailyRoll
+        ? { jobRerollsUsed: status.used + 1, jobRerollsResetAt: resetAt }
+        : { bonusRolls: { decrement: 1 } }),
     },
   });
 

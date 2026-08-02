@@ -57,6 +57,23 @@ try {
 }
 check("6th roll of the day is blocked", blocked);
 
+// 3b. Admin-granted bonus rolls work after the dailies run out.
+const { grantRolls } = await import("../src/lib/jobs.ts");
+await grantRolls(TEST_ID, 2);
+const withBonus = await getRollStatus(TEST_ID);
+check("granting 2 rolls gives 2 remaining after dailies are gone", withBonus.remaining === 2 && withBonus.bonusRolls === 2);
+await rollJob(TEST_ID);
+await rollJob(TEST_ID);
+let bonusBlocked = false;
+try {
+  await rollJob(TEST_ID);
+} catch {
+  bonusBlocked = true;
+}
+check("rolling is blocked again once bonus rolls are spent", bonusBlocked);
+const spent = await getRollStatus(TEST_ID);
+check("bonus rolls were consumed (not the daily counter)", spent.bonusRolls === 0 && spent.used === ROLLS_PER_DAY);
+
 // 4. After the 24h window passes, rolls come back.
 await prisma.user.update({
   where: { id: TEST_ID },
