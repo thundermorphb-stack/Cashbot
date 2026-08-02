@@ -9,6 +9,7 @@
     "deploy": "tsx src/deploy-commands.ts",
     "typecheck": "tsc --noEmit",
     "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma generate && prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:test": "tsx scripts/test-db.ts",
     "content:test": "tsx scripts/test-content.ts",

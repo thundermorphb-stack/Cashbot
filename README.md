@@ -122,17 +122,63 @@ pm2 save
 - `pm2 logs cashbot` shows the logs, `pm2 restart cashbot` restarts,
   `pm2 startup` prints one command to make it survive reboots.
 
-### Option B — a cheap VPS (most reliable)
-Rent a small Linux server (Hetzner/DigitalOcean/Oracle free tier), then:
-1. Install Node.js LTS and git.
-2. Copy this folder to the server (or `git clone` if you push it to GitHub —
-   the `.gitignore` already keeps `.env` and the database out of git).
-3. Recreate `.env` on the server, run `npm install`, `npx prisma migrate dev`,
-   `npm run deploy`, then use pm2 as above.
+### Option B — Google Cloud (free tier, recommended)
+
+A Compute Engine **e2-micro** VM is part of Google's always-free tier and is
+perfect for this bot. One-time setup, then the bot runs forever without your
+computer.
+
+**1. Create the VM** at https://console.cloud.google.com
+- Create a project → Compute Engine → Create Instance.
+- Machine type: `e2-micro`. Region: `us-west1`, `us-central1`, or `us-east1`
+  (only these are free-tier). Boot disk: Debian 12, 30 GB standard.
+- Everything else default → Create. Click **SSH** to open a terminal in the browser.
+
+**2. Install Node.js and git on the VM** (paste into the SSH window):
+
+```bash
+sudo apt update && sudo apt install -y git build-essential && curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs
+```
+
+**3. Get the code and set it up:**
+
+```bash
+git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git cashbot && cd cashbot
+```
+
+- Create the secrets file: `nano .env`, paste the same contents as your local
+  `.env` (token, IDs...), save with Ctrl+O Enter, exit with Ctrl+X.
+  Secrets are never in git — this file is recreated by hand on each machine.
+
+```bash
+npm install && npm run db:deploy && npm run deploy
+```
+
+**4. Keep it running forever with pm2:**
+
+```bash
+sudo npm install -g pm2 && pm2 start npm --name cashbot -- start && pm2 save && pm2 startup
+```
+
+- `pm2 startup` prints one `sudo ...` command — paste and run it. That makes
+  the bot auto-start even if Google reboots the VM.
+- Check on it anytime with `pm2 logs cashbot` / `pm2 status`.
+
+**Updating later:** push changes to GitHub from your computer, then on the VM:
+
+```bash
+cd cashbot && git pull && npm install && npm run db:deploy && npm run deploy && pm2 restart cashbot
+```
+
+**Keeping your existing economy:** the database is NOT in git (on purpose).
+To move current balances to the server, copy your local `dev.db` into the
+`cashbot` folder on the VM (with `gcloud compute scp dev.db NAME:~/cashbot/`
+or the SSH window's Upload File button) before starting the bot.
+IMPORTANT: only one machine should run the bot at a time — stop it locally.
 
 ### Backups
-The entire economy lives in one file: `prisma/dev.db`. Copy it somewhere safe
-now and then. Restoring = putting the file back.
+The entire economy lives in one file: `dev.db` in the project folder. Copy it
+somewhere safe now and then. Restoring = putting the file back.
 
 ## Maintenance
 
