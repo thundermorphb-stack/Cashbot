@@ -4,6 +4,7 @@
 
 import { prisma } from "./db.ts";
 import { log } from "../logger.ts";
+import { applyGarnishment } from "./loans.ts";
 
 export const STARTING_BALANCE = 500;
 export const CURRENCY = "💵 CASH";
@@ -92,13 +93,27 @@ export async function removeCash(discordId: string, amount: number, reason: stri
  * Example: base 100 with a +25% job = 125 CASH paid.
  * Use this for activity rewards (math, trivia, daily...);
  * use plain addCash for things a job shouldn't boost (drops, stolen money...).
+ *
+ * If the earner is in debt, their earnings are garnished straight to their
+ * lender — `garnishNote` describes what happened (empty string when debt-free).
  */
 export async function addEarnings(discordId: string, baseAmount: number, reason: string) {
   const user = await getOrCreateUser(discordId);
   const bonus = Math.round(baseAmount * user.jobBonus);
   const total = baseAmount + bonus;
   await addCash(discordId, total, reason);
-  return { total, base: baseAmount, bonus };
+
+  let garnishNote = "";
+  const garnish = await applyGarnishment(discordId, total);
+  if (garnish) {
+    garnishNote =
+      `\n🏦 **Debt collection:** ${garnish.garnished.toLocaleString()} CASH went to <@${garnish.lenderId}>` +
+      (garnish.remaining > 0
+        ? ` — **${garnish.remaining.toLocaleString()} CASH** still owed.`
+        : ` — **debt fully paid!** 🎉`);
+  }
+
+  return { total, base: baseAmount, bonus, garnishNote };
 }
 
 /** True if the user has at least `amount` CASH in their wallet. */

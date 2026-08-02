@@ -41,7 +41,8 @@ export const daily: Command = {
       .setTitle("📅 Daily Reward")
       .setDescription(
         `${interaction.user} collected **${paid.total} 💵 CASH**${bonusNote}!\n` +
-          `Wallet: **${user.wallet.toLocaleString()} CASH**`
+          `Wallet: **${user.wallet.toLocaleString()} CASH**` +
+          paid.garnishNote
       )
       .setFooter({ text: "Come back tomorrow for more!" });
 

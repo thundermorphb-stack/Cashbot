@@ -26,6 +26,19 @@ perks, and play the stock market — while inflation keeps the economy honest.
 | `/steal @user amount` | Rob someone's wallet. Win: take 50–100% of the attempt. Lose: pay them 150% |
 | 🛡️ Security items | Padlock → Bodyguard lower thieves' success chance against you (see `/shop`) |
 
+### Money between players
+| Command | What it does |
+| --- | --- |
+| `/give @user amount` | Donate CASH (the taxman takes a random 7–10% cut) |
+| `/loan offer @user amount rate` | Offer a loan; interest grows every 20 min; they must accept |
+| `/loan repay [amount]` | Pay back your debt (partial or full) |
+| `/loan status` | What you owe and what you're owed |
+| `/loan forgive @user` | Wipe someone's remaining debt to you |
+
+While in debt, **everything the borrower earns** (math, trivia, daily) is
+garnished straight to the lender until the debt is cleared. Debt is capped at
+5× the original loan.
+
 ### Spending
 | Command | What it does |
 | --- | --- |
@@ -48,6 +61,7 @@ perks, and play the stock market — while inflation keeps the economy honest.
 | `/leaderboard` | Richest, highest net worth, best jobs, best investors, top thieves |
 | `/ping` | Is the bot alive? |
 | `/drop` | (Admins) force a CASH drop in this channel |
+| `/grantrolls` | (Admins) gift a player extra job rolls |
 
 ### Economy rules
 - New members start with **500 CASH** automatically.

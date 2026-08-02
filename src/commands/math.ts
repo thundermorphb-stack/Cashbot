@@ -195,7 +195,8 @@ export const math: Command = {
       const bonusNote = paid.bonus > 0 ? ` (${paid.base} + ${paid.bonus} job bonus)` : "";
       await submitted.reply(
         `✅ **Correct!** \`${question}\` = **${answer}**\n` +
-          `${interaction.user} earned **${paid.total} 💵 CASH**${bonusNote}!`
+          `${interaction.user} earned **${paid.total} 💵 CASH**${bonusNote}!` +
+          paid.garnishNote
       );
     } else {
       await submitted.reply({

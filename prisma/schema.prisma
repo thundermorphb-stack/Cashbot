@@ -94,6 +94,22 @@ model Investment {
   @@index([userId])
 }
 
+// A player-to-player loan. Interest grows every 20 minutes (simple interest,
+// capped at 5× the principal). While one of these exists, the borrower's
+// earnings are garnished straight to the lender.
+model Loan {
+  id         Int      @id @default(autoincrement())
+  lenderId   String // who gave the money
+  borrowerId String // who owes it
+  principal  Int // the original amount lent
+  ratePct    Float // % interest per 20 minutes, e.g. 2.5
+  repaid     Int      @default(0) // paid back so far (garnished or manual)
+  startedAt  DateTime @default(now())
+
+  @@index([borrowerId])
+  @@index([lenderId])
+}
+
 // Current market price of each fictional company (random walk over time).
 model Stock {
   key       String   @id // e.g. "technova" — matches src/data/stocks.ts

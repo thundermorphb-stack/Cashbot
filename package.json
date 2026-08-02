@@ -16,7 +16,8 @@
     "jobs:test": "tsx scripts/test-jobs.ts",
     "phase5:test": "tsx scripts/test-phase5.ts",
     "phase6:test": "tsx scripts/test-phase6.ts",
-    "test:all": "npm run typecheck && npm run db:test && npm run content:test && npm run jobs:test && npm run phase5:test && npm run phase6:test"
+    "loans:test": "tsx scripts/test-loans.ts",
+    "test:all": "npm run typecheck && npm run db:test && npm run content:test && npm run jobs:test && npm run phase5:test && npm run phase6:test && npm run loans:test"
   },
   "keywords": [],
   "author": "",
