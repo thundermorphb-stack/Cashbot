@@ -1,0 +1,42 @@
+{
+  "name": "cashbot",
+  "version": "1.0.0",
+  "description": "CASH — a Discord economy bot",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "deploy": "tsx src/deploy-commands.ts",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:test": "tsx scripts/test-db.ts",
+    "content:test": "tsx scripts/test-content.ts",
+    "jobs:test": "tsx scripts/test-jobs.ts",
+    "phase5:test": "tsx scripts/test-phase5.ts",
+    "phase6:test": "tsx scripts/test-phase6.ts",
+    "test:all": "npm run typecheck && npm run db:test && npm run content:test && npm run jobs:test && npm run phase5:test && npm run phase6:test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "prisma": "^7.9.1",
+    "tsx": "^4.23.4",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.11.1": true,
+    "esbuild@0.28.1": true,
+    "prisma@7.9.1": true,
+    "fsevents@2.3.3": true,
+    "@prisma/engines@7.9.1": true
+  }
+}

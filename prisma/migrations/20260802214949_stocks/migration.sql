@@ -1,0 +1,7 @@
+-- CreateTable
+CREATE TABLE "Stock" (
+    "key" TEXT NOT NULL PRIMARY KEY,
+    "price" INTEGER NOT NULL,
+    "prevPrice" INTEGER NOT NULL,
+    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

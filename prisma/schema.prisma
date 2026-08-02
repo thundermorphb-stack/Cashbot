@@ -1,0 +1,113 @@
+// This is the database blueprint for CASH.
+// Each "model" below becomes a table in the SQLite database.
+// After changing this file, run: npm run db:migrate
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// One row per Discord member who has used the bot.
+model User {
+  id          String   @id // Discord user ID (a long number as text)
+  wallet      Int      @default(500) // CASH on hand — can be stolen
+  bank        Int      @default(0) // CASH in the bank — protected
+  totalEarned Int      @default(0)
+  totalSpent  Int      @default(0)
+  level       Int      @default(1)
+  xp          Int      @default(0)
+  jobBonus    Float    @default(0) // e.g. 0.25 means +25% income
+  jobId       Int?
+  job         Job?     @relation(fields: [jobId], references: [id])
+  jobRerollsUsed   Int       @default(0) // job rolls used in the current 24h window
+  jobRerollsResetAt DateTime? // when the 24h window ends and rolls refresh
+  createdAt   DateTime @default(now())
+
+  transactions Transaction[]
+  inventory    InventoryItem[]
+  investments  Investment[]
+  cooldowns    Cooldown[]
+}
+
+// Every single CASH movement is recorded here — nothing moves without a log.
+model Transaction {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  amount    Int // positive = CASH gained, negative = CASH lost
+  reason    String // e.g. "Math Challenge", "Failed Steal Attempt"
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// The list of possible jobs users can roll for.
+model Job {
+  id     Int    @id @default(autoincrement())
+  name   String @unique
+  rarity String // Common, Uncommon, Rare, Epic, Legendary
+  bonus  Float // income multiplier, e.g. 0.35 means +35%
+  users  User[]
+}
+
+// Things for sale in the shop (nickname, role color, VIP, etc.).
+model ShopItem {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  description String
+  price       Int
+  type        String // e.g. "nickname", "role_color", "vip"
+  durationMin Int? // how long it lasts in minutes; empty = permanent
+
+  inventoryItems InventoryItem[]
+}
+
+// Items a user has bought. Temporary items store an expiry date.
+model InventoryItem {
+  id         Int       @id @default(autoincrement())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  shopItemId Int
+  shopItem   ShopItem  @relation(fields: [shopItemId], references: [id])
+  acquiredAt DateTime  @default(now())
+  expiresAt  DateTime? // empty = permanent
+  metadata   String? // JSON notes, e.g. which role/channel was created (for cleanup)
+
+  @@index([userId])
+}
+
+// Shares of fictional companies a user owns.
+model Investment {
+  id       Int      @id @default(autoincrement())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  company  String // e.g. "Tech Company"
+  shares   Int
+  buyPrice Int // price per share when purchased
+  boughtAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Current market price of each fictional company (random walk over time).
+model Stock {
+  key       String   @id // e.g. "technova" — matches src/data/stocks.ts
+  price     Int
+  prevPrice Int
+  updatedAt DateTime @default(now())
+}
+
+// Tracks when a user last used a command with a cooldown (/math, /daily, ...).
+model Cooldown {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  command   String // e.g. "math", "daily", "steal"
+  expiresAt DateTime
+
+  @@unique([userId, command]) // one cooldown per command per user
+}
