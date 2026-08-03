@@ -17,6 +17,7 @@ import {
 } from "discord.js";
 import type { Command } from "../types.ts";
 import { canAfford } from "../lib/economy.ts";
+import { currencyForGuild, fmt } from "../lib/currency.ts";
 import {
   computeOwed,
   createLoan,
@@ -87,6 +88,7 @@ export const loan: Command = {
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
     const me = interaction.user;
+    const currency = currencyForGuild(interaction.guildId);
     const fail = (text: string) =>
       interaction.reply({ content: text, flags: MessageFlags.Ephemeral });
 
@@ -98,8 +100,8 @@ export const loan: Command = {
 
       if (borrower.id === me.id) return void (await fail("🪞 You can't lend to yourself."));
       if (borrower.bot) return void (await fail("🤖 Bots have excellent credit but no needs."));
-      if (!(await canAfford(me.id, amount)))
-        return void (await fail(`💸 You don't have **${amount.toLocaleString()} CASH** in your wallet to lend.`));
+      if (!(await canAfford(me.id, amount, currency)))
+        return void (await fail(`💸 You don't have **${fmt(amount, currency)}** on hand to lend.`));
       if (await getLoanAsBorrower(borrower.id))
         return void (await fail(`${borrower.displayName} already has an active loan — one debt at a time.`));
 
@@ -109,16 +111,16 @@ export const loan: Command = {
         .setColor(0xf39c12)
         .setTitle("🤝 Loan Offer")
         .setDescription(
-          `${me} offers ${borrower} a loan of **${amount.toLocaleString()} 💵 CASH**\n` +
+          `${me} offers ${borrower} a loan of **${fmt(amount, currency)}**\n` +
             `at **${rate}% interest every ${PERIOD_MINUTES} minutes** (≈ ${Math.round(perDay)}%/day, simple interest).`
         )
         .addFields({
           name: `⚠️ ${borrower.displayName}, read before accepting`,
           value:
             `• Interest starts ticking the moment you accept.\n` +
-            `• **Everything you earn** (math, trivia, daily) goes straight to ${me.displayName} until the debt is paid.\n` +
-            `• Debt is capped at ${MAX_OWED_MULTIPLIER}× the loan (${(amount * MAX_OWED_MULTIPLIER).toLocaleString()} CASH).\n` +
-            `• Repay anytime with \`/loan repay\`.`,
+            `• **Everything you earn in ${currency.name}** (math, trivia, daily) goes straight to ${me.displayName} until the debt is paid.\n` +
+            `• Debt is capped at ${MAX_OWED_MULTIPLIER}× the loan (${(amount * MAX_OWED_MULTIPLIER).toLocaleString()} ${currency.name}).\n` +
+            `• Repay anytime with \`/loan repay\` in this server.`,
         })
         .setFooter({ text: `Offer expires in ${ACCEPT_WINDOW_SECONDS / 60} minutes` });
 
@@ -170,7 +172,7 @@ export const loan: Command = {
 
         // Accept: re-check the rules, then move the money.
         try {
-          await createLoan(me.id, borrower.id, amount, rate);
+          await createLoan(me.id, borrower.id, amount, rate, currency);
           await click.update({
             embeds: [
               EmbedBuilder.from(embed)
@@ -204,16 +206,16 @@ export const loan: Command = {
     if (sub === "repay") {
       const requested = interaction.options.getInteger("amount") ?? undefined;
       try {
-        const result = await repayLoan(me.id, requested);
+        const result = await repayLoan(me.id, requested, currency);
         await interaction.reply({
           embeds: [
             new EmbedBuilder()
               .setColor(result.remaining > 0 ? 0xf39c12 : 0x2ecc71)
               .setTitle(result.remaining > 0 ? "💳 Payment Made" : "🎉 Debt Cleared!")
               .setDescription(
-                `${me} paid **${result.payment.toLocaleString()} 💵 CASH** to <@${result.lenderId}>.` +
+                `${me} paid **${fmt(result.payment, currency)}** to <@${result.lenderId}>.` +
                   (result.remaining > 0
-                    ? `\nStill owed: **${result.remaining.toLocaleString()} CASH** (and interest keeps ticking...)`
+                    ? `\nStill owed: **${result.remaining.toLocaleString()} ${currency.name}** (and interest keeps ticking...)`
                     : `\nThey are officially debt-free!`)
               ),
           ],
@@ -239,8 +241,9 @@ export const loan: Command = {
               PERIOD_MINUTES *
               60_000
         );
+        const debtEmoji = myDebt.currency === "coins" ? "🪙 COINS" : "💵 CASH";
         lines.push(
-          `**You owe** <@${myDebt.lenderId}>: **${owed.toLocaleString()} 💵 CASH**\n` +
+          `**You owe** <@${myDebt.lenderId}>: **${owed.toLocaleString()} ${debtEmoji}**\n` +
             `-# borrowed ${myDebt.principal.toLocaleString()} at ${myDebt.ratePct}%/${PERIOD_MINUTES}min · ` +
             `repaid ${myDebt.repaid.toLocaleString()} so far · interest ticks ${relativeTime(nextTick)}`
         );
@@ -250,8 +253,9 @@ export const loan: Command = {
 
       if (myLoans.length > 0) {
         for (const lent of myLoans) {
+          const lentEmoji = lent.currency === "coins" ? "🪙 COINS" : "💵 CASH";
           lines.push(
-            `**Owed to you** by <@${lent.borrowerId}>: **${computeOwed(lent).toLocaleString()} 💵 CASH**\n` +
+            `**Owed to you** by <@${lent.borrowerId}>: **${computeOwed(lent).toLocaleString()} ${lentEmoji}**\n` +
               `-# lent ${lent.principal.toLocaleString()} at ${lent.ratePct}%/${PERIOD_MINUTES}min`
           );
         }
@@ -281,7 +285,7 @@ export const loan: Command = {
               .setColor(0x2ecc71)
               .setTitle("🕊️ Debt Forgiven")
               .setDescription(
-                `${me} wiped ${borrower}'s remaining debt of **${forgiven.toLocaleString()} 💵 CASH**. What a saint.`
+                `${me} wiped ${borrower}'s remaining debt of **${forgiven.toLocaleString()}**. What a saint.`
               ),
           ],
         });

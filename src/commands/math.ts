@@ -18,6 +18,7 @@ import {
 } from "discord.js";
 import type { Command } from "../types.ts";
 import { addEarnings } from "../lib/economy.ts";
+import { currencyForGuild } from "../lib/currency.ts";
 import { getActiveCooldown, relativeTime, setCooldown } from "../lib/cooldowns.ts";
 
 const COOLDOWN_MINUTES = 5;
@@ -204,11 +205,12 @@ export const math: Command = {
 
     if (given === answer) {
       const { min, max } = REWARDS[difficulty];
-      const paid = await addEarnings(userId, randomInt(min, max), `Math Challenge (${difficulty})`);
+      const currency = currencyForGuild(interaction.guildId);
+      const paid = await addEarnings(userId, randomInt(min, max), `Math Challenge (${difficulty})`, currency);
       const bonusNote = paid.bonus > 0 ? ` (${paid.base} + ${paid.bonus} job bonus)` : "";
       await submitted.reply(
         `✅ **Correct!** \`${question}\` = **${answer}**\n` +
-          `${interaction.user} earned **${paid.total} 💵 CASH**${bonusNote}!` +
+          `${interaction.user} earned **${paid.total} ${currency.emoji} ${currency.name}**${bonusNote}!` +
           paid.garnishNote
       );
     } else {

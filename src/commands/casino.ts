@@ -30,8 +30,10 @@ export const casino: Command = {
   async execute(interaction) {
     const sub = interaction.options.getSubcommand();
 
+    const settingKey = `${CASINO_CHANNEL_KEY}:${interaction.guildId}`;
+
     if (sub === "set") {
-      await setSetting(CASINO_CHANNEL_KEY, interaction.channelId);
+      await setSetting(settingKey, interaction.channelId);
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -48,12 +50,12 @@ export const casino: Command = {
     }
 
     if (sub === "unset") {
-      await deleteSetting(CASINO_CHANNEL_KEY);
+      await deleteSetting(settingKey);
       await interaction.reply("🚪 The casino is closed. Gambling is disabled server-wide.");
       return;
     }
 
-    const channelId = await getSetting(CASINO_CHANNEL_KEY);
+    const channelId = await getSetting(settingKey);
     await interaction.reply({
       content: channelId
         ? `🎰 The casino is <#${channelId}>.`

@@ -15,8 +15,13 @@
 import { prisma } from "./db.ts";
 import { addCash, canAfford, removeCash } from "./economy.ts";
 import { getSetting, setSetting } from "./settings.ts";
+import { CURRENCIES, getExchangeRate, toLocal, type Currency } from "./currency.ts";
 import { log } from "../logger.ts";
 import { DEFAULT_STOCKS, GENRES, genreEmoji, type GenreKey } from "../data/stocks.ts";
+
+// The market itself always quotes prices in 💵 CASH — the world's reserve
+// currency. Players from the coins country pay/receive 🪙 COINS, converted
+// automatically at the live exchange rate.
 
 export const PRICE_STEP_MINUTES = 15;
 const MAX_CATCHUP_STEPS = 12; // after long quiet periods, apply at most this many steps
@@ -136,20 +141,29 @@ async function applyTradeImpact(row: StockRow, shares: number, direction: 1 | -1
   });
 }
 
-/** Buys shares at the current price. Throws RangeError with a friendly message. */
-export async function buyShares(userId: string, stockKey: string, shares: number) {
+/**
+ * Buys shares at the current (CASH) price, paid in the buyer's local
+ * currency. Throws RangeError with a friendly message.
+ */
+export async function buyShares(
+  userId: string,
+  stockKey: string,
+  shares: number,
+  currency: Currency = CURRENCIES.cash
+) {
   await getPrices();
   const row = await prisma.stock.findUnique({ where: { key: stockKey } });
   if (!row) throw new RangeError("That company isn't listed (anymore).");
-  const cost = row.price * shares;
+  const rate = currency.key === "coins" ? await getExchangeRate() : 1;
+  const cost = toLocal(row.price * shares, currency, rate); // what the buyer pays, locally
 
-  if (!(await canAfford(userId, cost))) {
+  if (!(await canAfford(userId, cost, currency))) {
     throw new RangeError(
-      `${shares} share(s) of ${displayName(row)} cost ${cost.toLocaleString()} CASH right now — you can't afford that.`
+      `${shares} share(s) of ${displayName(row)} cost ${cost.toLocaleString()} ${currency.name} right now — you can't afford that.`
     );
   }
 
-  await removeCash(userId, cost, `Stock Purchase (${row.name})`);
+  await removeCash(userId, cost, `Stock Purchase (${row.name})`, currency);
   await prisma.investment.create({
     data: { userId, company: stockKey, shares, buyPrice: row.price },
   });
@@ -158,15 +172,21 @@ export async function buyShares(userId: string, stockKey: string, shares: number
   let founderCut = 0;
   if (row.ownerId && row.ownerId !== userId) {
     founderCut = Math.round(cost * FOUNDER_CUT);
-    if (founderCut > 0) await addCash(row.ownerId, founderCut, `Founder's Cut (${row.name})`);
+    if (founderCut > 0)
+      await addCash(row.ownerId, founderCut, `Founder's Cut (${row.name})`, currency);
   }
 
   await applyTradeImpact(row, shares, 1); // demand pushes the price up
-  return { price: row.price, cost, row, founderCut };
+  return { price: row.price, cost, row, founderCut, currency };
 }
 
-/** Sells shares (oldest lots first) at the current price. */
-export async function sellShares(userId: string, stockKey: string, shares: number) {
+/** Sells shares (oldest lots first); proceeds arrive in the local currency. */
+export async function sellShares(
+  userId: string,
+  stockKey: string,
+  shares: number,
+  currency: Currency = CURRENCIES.cash
+) {
   const row = await prisma.stock.findUnique({ where: { key: stockKey } });
   if (!row) throw new RangeError("That company isn't listed (anymore).");
 
@@ -201,10 +221,12 @@ export async function sellShares(userId: string, stockKey: string, shares: numbe
     }
   }
 
-  const proceeds = price * shares;
-  await addCash(userId, proceeds, `Stock Sale (${row.name})`);
+  const rate = currency.key === "coins" ? await getExchangeRate() : 1;
+  const proceeds = toLocal(price * shares, currency, rate); // paid out locally
+  const localCostBasis = toLocal(costBasis, currency, rate);
+  await addCash(userId, proceeds, `Stock Sale (${row.name})`, currency);
   await applyTradeImpact(fresh!, shares, -1); // sell-off pushes the price down
-  return { price, proceeds, costBasis, profit: proceeds - costBasis, row };
+  return { price, proceeds, costBasis: localCostBasis, profit: proceeds - localCostBasis, row, currency };
 }
 
 export interface Holding {
@@ -275,19 +297,24 @@ export async function countPlayerCompanies(): Promise<number> {
  * stock. If this takes the server to 10 player companies, the defaults are
  * delisted (their investors are paid out at the current price).
  */
-export async function foundCompany(ownerId: string, genre: GenreKey, cost: number) {
+export async function foundCompany(
+  ownerId: string,
+  genre: GenreKey,
+  cost: number,
+  currency: Currency = CURRENCIES.cash
+) {
   const mine = await prisma.stock.count({ where: { ownerId } });
   if (mine >= MAX_COMPANIES_PER_PLAYER) {
     throw new RangeError(`You already run ${MAX_COMPANIES_PER_PLAYER} companies — even tycoons have limits.`);
   }
-  if (!(await canAfford(ownerId, cost))) {
-    throw new RangeError(`Founding a company costs ${cost.toLocaleString()} CASH right now — you can't afford it.`);
+  if (!(await canAfford(ownerId, cost, currency))) {
+    throw new RangeError(`Founding a company costs ${cost.toLocaleString()} ${currency.name} right now — you can't afford it.`);
   }
 
   const name = await generateCompanyName(genre);
   const key = name.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-  await removeCash(ownerId, cost, `Founded Company (${name})`);
+  await removeCash(ownerId, cost, `Founded Company (${name})`, currency);
   const row = await prisma.stock.create({
     data: {
       key,

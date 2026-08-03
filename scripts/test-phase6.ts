@@ -88,7 +88,7 @@ await prisma.inventoryItem.update({
 });
 await addToInventory(TEST_ID, findShopItem("bodyguard")!); // still active
 
-const sweptCount = await sweepExpiredItems(null);
+const sweptCount = await sweepExpiredItems([]);
 const remaining = await prisma.inventoryItem.findMany({ where: { userId: TEST_ID } });
 check("sweep removed exactly the expired item", sweptCount >= 1 && remaining.length === 1);
 check("the active item survived the sweep", remaining[0].shopItemId !== padlockRow!.shopItemId);

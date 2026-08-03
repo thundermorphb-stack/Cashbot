@@ -8,6 +8,7 @@
 
 import { prisma } from "./db.ts";
 import { addCash, removeCash } from "./economy.ts";
+import { CURRENCIES, type Currency } from "./currency.ts";
 import { log } from "../logger.ts";
 
 export const PERIOD_MINUTES = 20; // how often interest ticks
@@ -45,16 +46,17 @@ export async function createLoan(
   lenderId: string,
   borrowerId: string,
   principal: number,
-  ratePct: number
+  ratePct: number,
+  currency: Currency = CURRENCIES.cash
 ) {
   if (await getLoanAsBorrower(borrowerId)) {
     throw new RangeError("They already have an active loan — one debt at a time!");
   }
   // removeCash throws if the lender can't afford it anymore.
-  await removeCash(lenderId, principal, "Loan Sent");
-  await addCash(borrowerId, principal, "Loan Received");
+  await removeCash(lenderId, principal, "Loan Sent", currency);
+  await addCash(borrowerId, principal, "Loan Received", currency);
   return prisma.loan.create({
-    data: { lenderId, borrowerId, principal, ratePct },
+    data: { lenderId, borrowerId, principal, ratePct, currency: currency.key },
   });
 }
 
@@ -76,9 +78,16 @@ async function recordPayment(loanId: number, previousRepaid: number, payment: nu
  * Takes up to `earnedAmount` from them and hands it to their lender.
  * Returns null if the user is debt-free.
  */
-export async function applyGarnishment(borrowerId: string, earnedAmount: number) {
+export async function applyGarnishment(
+  borrowerId: string,
+  earnedAmount: number,
+  currency: Currency = CURRENCIES.cash
+) {
   const loan = await getLoanAsBorrower(borrowerId);
   if (!loan) return null;
+  // Debts are collected in their own currency — coins earnings can't pay
+  // off a cash loan (and vice versa).
+  if (loan.currency !== currency.key) return null;
 
   const owed = computeOwed(loan);
   if (owed <= 0) {
@@ -89,25 +98,33 @@ export async function applyGarnishment(borrowerId: string, earnedAmount: number)
   const garnished = Math.min(earnedAmount, owed);
   if (garnished <= 0) return null;
 
-  await removeCash(borrowerId, garnished, "Debt Collection");
-  await addCash(loan.lenderId, garnished, "Debt Collection");
+  await removeCash(borrowerId, garnished, "Debt Collection", currency);
+  await addCash(loan.lenderId, garnished, "Debt Collection", currency);
   const remaining = await recordPayment(loan.id, loan.repaid, garnished, owed);
 
-  log.info(`Garnished ${garnished} CASH from ${borrowerId} → ${loan.lenderId} (${remaining} still owed)`);
+  log.info(`Garnished ${garnished} ${currency.name} from ${borrowerId} → ${loan.lenderId} (${remaining} still owed)`);
   return { garnished, remaining, lenderId: loan.lenderId };
 }
 
-/** Manual repayment from the borrower's wallet. */
-export async function repayLoan(borrowerId: string, requestedAmount?: number) {
+/** Manual repayment from the borrower's pocket (same currency as the loan). */
+export async function repayLoan(
+  borrowerId: string,
+  requestedAmount: number | undefined,
+  currency: Currency = CURRENCIES.cash
+) {
   const loan = await getLoanAsBorrower(borrowerId);
   if (!loan) throw new RangeError("You don't owe anyone anything. Enjoy it!");
+  if (loan.currency !== currency.key) {
+    const home = loan.currency === "coins" ? "🪙 COINS" : "💵 CASH";
+    throw new RangeError(`That loan is in ${home} — repay it in the ${home} server.`);
+  }
 
   const owed = computeOwed(loan);
   const payment = Math.min(requestedAmount ?? owed, owed);
 
-  // removeCash throws if their wallet is too small.
-  await removeCash(borrowerId, payment, "Loan Repayment");
-  await addCash(loan.lenderId, payment, "Loan Repayment");
+  // removeCash throws if their pocket is too small.
+  await removeCash(borrowerId, payment, "Loan Repayment", currency);
+  await addCash(loan.lenderId, payment, "Loan Repayment", currency);
   const remaining = await recordPayment(loan.id, loan.repaid, payment, owed);
 
   return { payment, remaining, lenderId: loan.lenderId };

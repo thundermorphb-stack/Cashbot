@@ -7,7 +7,8 @@
 
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 import type { Command } from "../types.ts";
-import { addCash, canAfford, getInflation, inflatedPrice, removeCash } from "../lib/economy.ts";
+import { addCash, canAfford, localPrice, removeCash } from "../lib/economy.ts";
+import { currencyForGuild, fmt } from "../lib/currency.ts";
 import { addToInventory } from "../lib/shop.ts";
 import { SHOP_ITEMS, findShopItem } from "../data/shop.ts";
 import { applyPerk, PerkError } from "../features/perks.ts";
@@ -53,19 +54,19 @@ export const buy: Command = {
     if (item.needsImage && !interaction.options.getAttachment("image"))
       return void (await fail(`🖼️ **${item.name}** needs the \`image\` option — attach a picture.`));
 
-    // ---- Check the price at current inflation ----
-    const inflation = await getInflation();
-    const price = inflatedPrice(item.basePrice, inflation.multiplier);
-    if (!(await canAfford(userId, price)))
+    // ---- Check the price at current inflation (in this server's currency) ----
+    const currency = currencyForGuild(interaction.guildId);
+    const { price, inflation } = await localPrice(item.basePrice, currency);
+    if (!(await canAfford(userId, price, currency)))
       return void (await fail(
-        `💸 **${item.name}** costs **${price.toLocaleString()} CASH** right now (inflation ×${inflation.multiplier}) — you can't afford it. Get earning!`
+        `💸 **${item.name}** costs **${fmt(price, currency)}** right now (inflation ×${inflation.multiplier}) — you can't afford it. Get earning!`
       ));
 
     // Perks can take a moment (creating roles/channels/emojis).
     await interaction.deferReply();
 
     // ---- Pay first, then deliver; refund automatically if delivery fails ----
-    await removeCash(userId, price, `Shop: ${item.name}`);
+    await removeCash(userId, price, `Shop: ${item.name}`, currency);
     try {
       // Security items just need to sit in your inventory to work.
       const result =
@@ -89,19 +90,19 @@ export const buy: Command = {
             .setDescription(result.note)
             .setFooter({
               text:
-                `-${price.toLocaleString()} CASH (inflation ×${inflation.multiplier})` +
+                `-${price.toLocaleString()} ${currency.name} (inflation ×${inflation.multiplier})` +
                 (item.durationDays ? ` · expires in ${item.durationDays} days` : ""),
             }),
         ],
       });
     } catch (error) {
-      await addCash(userId, price, `Refund: ${item.name}`);
+      await addCash(userId, price, `Refund: ${item.name}`, currency);
       if (error instanceof PerkError) {
-        await interaction.editReply(`⚠️ ${error.message}\n💵 Your **${price.toLocaleString()} CASH** was refunded.`);
+        await interaction.editReply(`⚠️ ${error.message}\n${currency.emoji} Your **${fmt(price, currency)}** was refunded.`);
       } else {
         log.error(`Purchase of ${item.key} failed unexpectedly:`, error);
         await interaction.editReply(
-          `⚠️ Something went wrong delivering **${item.name}**. Your **${price.toLocaleString()} CASH** was refunded.`
+          `⚠️ Something went wrong delivering **${item.name}**. Your **${fmt(price, currency)}** was refunded.`
         );
       }
     }

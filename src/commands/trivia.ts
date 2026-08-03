@@ -14,6 +14,7 @@ import {
 } from "discord.js";
 import type { Command } from "../types.ts";
 import { addEarnings } from "../lib/economy.ts";
+import { currencyForGuild } from "../lib/currency.ts";
 import { getActiveCooldown, relativeTime, setCooldown } from "../lib/cooldowns.ts";
 import {
   TRIVIA,
@@ -133,13 +134,14 @@ export const trivia: Command = {
       const pickedText = options[pickedIndex];
 
       if (pickedText === q.correct) {
-        const paid = await addEarnings(userId, randomInt(REWARD_MIN, REWARD_MAX), `Trivia (${category})`);
+        const currency = currencyForGuild(interaction.guildId);
+        const paid = await addEarnings(userId, randomInt(REWARD_MIN, REWARD_MAX), `Trivia (${category})`, currency);
         const bonusNote = paid.bonus > 0 ? ` (incl. ${paid.bonus} job bonus)` : "";
         await click.update({
           embeds: [
             EmbedBuilder.from(embed)
               .setColor(0x2ecc71)
-              .setFooter({ text: `✅ Correct! ${interaction.user.displayName} earned ${paid.total} 💵 CASH${bonusNote}` }),
+              .setFooter({ text: `✅ Correct! ${interaction.user.displayName} earned ${paid.total} ${currency.emoji} ${currency.name}${bonusNote}` }),
           ],
           components: [makeButtons({ revealCorrect: true })],
         });

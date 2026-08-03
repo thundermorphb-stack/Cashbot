@@ -1,10 +1,21 @@
-// The money rules of CASH live here.
-// Golden rule: CASH never moves without a Transaction log entry,
+// The money rules of the two-country economy.
+// Golden rule: money never moves without a Transaction log entry,
 // so these helpers are the ONLY way commands should change balances.
+//
+// Every function takes a `currency` (💵 CASH by default). Balances live in
+// User.wallet (cash) and User.coins (coins). Lifetime totals (totalEarned /
+// totalSpent) are tracked in CASH-worth so leaderboards stay comparable.
 
 import { prisma } from "./db.ts";
 import { log } from "../logger.ts";
 import { applyGarnishment } from "./loans.ts";
+import {
+  CURRENCIES,
+  getExchangeRate,
+  toCashValue,
+  toLocal,
+  type Currency,
+} from "./currency.ts";
 
 export const STARTING_BALANCE = 500;
 export const CURRENCY = "💵 CASH";
@@ -22,6 +33,7 @@ export async function getOrCreateUser(discordId: string) {
       data: {
         userId: discordId,
         amount: STARTING_BALANCE,
+        currency: "cash",
         reason: "Welcome Bonus",
       },
     });
@@ -31,148 +43,123 @@ export async function getOrCreateUser(discordId: string) {
   return user;
 }
 
-/**
- * Gives CASH to a user's wallet and logs why.
- * Example: addCash("12345", 50, "Math Challenge")
- */
-export async function addCash(discordId: string, amount: number, reason: string) {
+/** The user's balance in the given currency. */
+export function balanceOf(user: { wallet: number; coins: number }, currency: Currency): number {
+  return currency.key === "cash" ? user.wallet : user.coins;
+}
+
+/** Gives money to a user and logs why. */
+export async function addCash(
+  discordId: string,
+  amount: number,
+  reason: string,
+  currency: Currency = CURRENCIES.cash
+) {
   if (amount <= 0) throw new Error(`addCash amount must be positive, got ${amount}`);
   await getOrCreateUser(discordId);
+  const worth = currency.key === "cash" ? amount : toCashValue(amount, currency, await getExchangeRate());
 
   const [user] = await prisma.$transaction([
     prisma.user.update({
       where: { id: discordId },
       data: {
-        wallet: { increment: amount },
-        totalEarned: { increment: amount },
+        [currency.column]: { increment: amount },
+        totalEarned: { increment: worth },
       },
     }),
     prisma.transaction.create({
-      data: { userId: discordId, amount, reason },
+      data: { userId: discordId, amount, currency: currency.key, reason },
     }),
   ]);
 
-  log.info(`+${amount} CASH to ${discordId} (${reason})`);
+  log.info(`+${amount} ${currency.name} to ${discordId} (${reason})`);
   return user;
 }
 
 /**
- * Takes CASH from a user's wallet and logs why.
+ * Takes money from a user and logs why.
  * Throws an error if the user can't afford it — check first with canAfford().
- * Example: removeCash("12345", 500, "Failed Steal Attempt")
  */
-export async function removeCash(discordId: string, amount: number, reason: string) {
+export async function removeCash(
+  discordId: string,
+  amount: number,
+  reason: string,
+  currency: Currency = CURRENCIES.cash
+) {
   if (amount <= 0) throw new Error(`removeCash amount must be positive, got ${amount}`);
   const existing = await getOrCreateUser(discordId);
+  const balance = balanceOf(existing, currency);
 
-  if (existing.wallet < amount) {
+  if (balance < amount) {
     throw new Error(
-      `${discordId} has ${existing.wallet} CASH but tried to spend ${amount}`
+      `${discordId} has ${balance} ${currency.name} but tried to spend ${amount}`
     );
   }
+  const worth = currency.key === "cash" ? amount : toCashValue(amount, currency, await getExchangeRate());
 
   const [user] = await prisma.$transaction([
     prisma.user.update({
       where: { id: discordId },
       data: {
-        wallet: { decrement: amount },
-        totalSpent: { increment: amount },
+        [currency.column]: { decrement: amount },
+        totalSpent: { increment: worth },
       },
     }),
     prisma.transaction.create({
-      data: { userId: discordId, amount: -amount, reason },
+      data: { userId: discordId, amount: -amount, currency: currency.key, reason },
     }),
   ]);
 
-  log.info(`-${amount} CASH from ${discordId} (${reason})`);
+  log.info(`-${amount} ${currency.name} from ${discordId} (${reason})`);
   return user;
 }
 
 /**
- * Pays out earned CASH with the user's job bonus applied.
- * Example: base 100 with a +25% job = 125 CASH paid.
- * Use this for activity rewards (math, trivia, daily...);
- * use plain addCash for things a job shouldn't boost (drops, stolen money...).
+ * Pays out earned money with the user's job bonus applied, in the LOCAL
+ * currency — always worth the same: `baseCashAmount` is in CASH-worth and is
+ * converted at the live exchange rate for the coins country.
  *
- * If the earner is in debt, their earnings are garnished straight to their
- * lender — `garnishNote` describes what happened (empty string when debt-free).
+ * If the earner is in debt (in this currency), earnings are garnished
+ * straight to their lender — `garnishNote` describes what happened.
  */
-export async function addEarnings(discordId: string, baseAmount: number, reason: string) {
+export async function addEarnings(
+  discordId: string,
+  baseCashAmount: number,
+  reason: string,
+  currency: Currency = CURRENCIES.cash
+) {
   const user = await getOrCreateUser(discordId);
-  const bonus = Math.round(baseAmount * user.jobBonus);
-  const total = baseAmount + bonus;
-  await addCash(discordId, total, reason);
+  const rate = currency.key === "coins" ? await getExchangeRate() : 1;
+  const localBase = toLocal(baseCashAmount, currency, rate);
+  const bonus = Math.round(localBase * user.jobBonus);
+  const total = localBase + bonus;
+  await addCash(discordId, total, reason, currency);
 
   let garnishNote = "";
-  const garnish = await applyGarnishment(discordId, total);
+  const garnish = await applyGarnishment(discordId, total, currency);
   if (garnish) {
     garnishNote =
-      `\n🏦 **Debt collection:** ${garnish.garnished.toLocaleString()} CASH went to <@${garnish.lenderId}>` +
+      `\n🏦 **Debt collection:** ${garnish.garnished.toLocaleString()} ${currency.emoji} went to <@${garnish.lenderId}>` +
       (garnish.remaining > 0
-        ? ` — **${garnish.remaining.toLocaleString()} CASH** still owed.`
+        ? ` — **${garnish.remaining.toLocaleString()} ${currency.name}** still owed.`
         : ` — **debt fully paid!** 🎉`);
   }
 
-  return { total, base: baseAmount, bonus, garnishNote };
+  return { total, base: localBase, bonus, garnishNote };
 }
 
-/** True if the user has at least `amount` CASH in their wallet. */
-export async function canAfford(discordId: string, amount: number) {
+/** True if the user has at least `amount` of the currency on hand. */
+export async function canAfford(
+  discordId: string,
+  amount: number,
+  currency: Currency = CURRENCIES.cash
+) {
   const user = await getOrCreateUser(discordId);
-  return user.wallet >= amount;
-}
-
-// ---------------- Banking ----------------
-// The bank is theft-proof: /steal only touches wallets. The catch is that
-// spending (shop, stocks, loans, gifts) needs wallet money, so hoarders must
-// withdraw — and walk around robbable — before they can buy anything.
-// Deposits/withdrawals move money between pockets, so they do NOT count
-// towards totalEarned or totalSpent.
-
-/** Moves wallet money into the safe. Pass no amount to deposit everything. */
-export async function depositCash(discordId: string, amount?: number) {
-  const user = await getOrCreateUser(discordId);
-  const moving = amount ?? user.wallet;
-  if (moving <= 0) throw new RangeError("Your wallet is empty — nothing to deposit.");
-  if (moving > user.wallet)
-    throw new RangeError(`You only have ${user.wallet.toLocaleString()} CASH in your wallet.`);
-
-  const [updated] = await prisma.$transaction([
-    prisma.user.update({
-      where: { id: discordId },
-      data: { wallet: { decrement: moving }, bank: { increment: moving } },
-    }),
-    prisma.transaction.create({
-      data: { userId: discordId, amount: -moving, reason: "Bank Deposit" },
-    }),
-  ]);
-  log.info(`${discordId} deposited ${moving} CASH`);
-  return { moved: moving, wallet: updated.wallet, bank: updated.bank };
-}
-
-/** Takes money back out of the safe. Pass no amount to withdraw everything. */
-export async function withdrawCash(discordId: string, amount?: number) {
-  const user = await getOrCreateUser(discordId);
-  const moving = amount ?? user.bank;
-  if (moving <= 0) throw new RangeError("Your bank account is empty — nothing to withdraw.");
-  if (moving > user.bank)
-    throw new RangeError(`You only have ${user.bank.toLocaleString()} CASH in the bank.`);
-
-  const [updated] = await prisma.$transaction([
-    prisma.user.update({
-      where: { id: discordId },
-      data: { bank: { decrement: moving }, wallet: { increment: moving } },
-    }),
-    prisma.transaction.create({
-      data: { userId: discordId, amount: moving, reason: "Bank Withdrawal" },
-    }),
-  ]);
-  log.info(`${discordId} withdrew ${moving} CASH`);
-  return { moved: moving, wallet: updated.wallet, bank: updated.bank };
+  return balanceOf(user, currency) >= amount;
 }
 
 // ---------------- Donations ----------------
-// Players can gift CASH, but the taxman always takes his cut.
+// Players can gift money, but the taxman always takes his cut.
 // The tax is destroyed (not given to anyone) — this quietly fights inflation.
 
 export const DONATION_TAX_MIN_PCT = 7;
@@ -188,13 +175,13 @@ export function computeDonation(amount: number, rng: () => number = Math.random)
 }
 
 // ---------------- Inflation ----------------
-// When the server is flooded with CASH, prices rise; when money is scarce,
-// prices fall. This keeps the shop painful no matter how rich everyone gets.
+// Each currency has its own inflation, based on how much of IT exists.
+// Flooded economy → prices up (×3 max); scarce money → prices down (×0.8).
 
-/** How much CASH per member counts as "normal". */
+/** How much money per member counts as "normal" (in local units). */
 export const BASELINE_PER_USER = 2_000;
-export const MIN_INFLATION = 0.8; // prices never drop below 80% of base
-export const MAX_INFLATION = 3.0; // ...and never rise above 300%
+export const MIN_INFLATION = 0.8;
+export const MAX_INFLATION = 3.0;
 
 /** Pure math: turns total money supply + user count into a price multiplier. */
 export function computeInflationMultiplier(supply: number, userCount: number): number {
@@ -204,13 +191,14 @@ export function computeInflationMultiplier(supply: number, userCount: number): n
   return Math.round(clamped * 100) / 100;
 }
 
-/** Reads the whole economy and returns the current inflation numbers. */
-export async function getInflation() {
+/** Reads one country's economy and returns its inflation numbers. */
+export async function getInflation(currency: Currency = CURRENCIES.cash) {
   const aggregate = await prisma.user.aggregate({
-    _sum: { wallet: true, bank: true },
+    _sum: { wallet: true, coins: true },
     _count: true,
   });
-  const supply = (aggregate._sum.wallet ?? 0) + (aggregate._sum.bank ?? 0);
+  const supply =
+    currency.key === "cash" ? (aggregate._sum.wallet ?? 0) : (aggregate._sum.coins ?? 0);
   const userCount = aggregate._count;
   return {
     supply,
@@ -222,4 +210,15 @@ export async function getInflation() {
 /** Applies inflation to a base price, rounded to a tidy multiple of 50. */
 export function inflatedPrice(basePrice: number, multiplier: number): number {
   return Math.max(50, Math.round((basePrice * multiplier) / 50) * 50);
+}
+
+/**
+ * A shop/business price in the local currency: converts the CASH base price
+ * at the exchange rate, then applies the local country's inflation.
+ */
+export async function localPrice(baseCashPrice: number, currency: Currency) {
+  const rate = currency.key === "coins" ? await getExchangeRate() : 1;
+  const inflation = await getInflation(currency);
+  const price = inflatedPrice(toLocal(baseCashPrice, currency, rate), inflation.multiplier);
+  return { price, inflation, rate };
 }

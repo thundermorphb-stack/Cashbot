@@ -12,6 +12,7 @@ import {
   DONATION_TAX_MIN_PCT,
   DONATION_TAX_MAX_PCT,
 } from "../lib/economy.ts";
+import { currencyForGuild, fmt } from "../lib/currency.ts";
 
 const MIN_DONATION = 10; // below this, tax rounding gets silly
 
@@ -38,17 +39,18 @@ export const give: Command = {
     const fail = (text: string) =>
       interaction.reply({ content: text, flags: MessageFlags.Ephemeral });
 
+    const currency = currencyForGuild(interaction.guildId);
     if (recipient.id === sender.id)
       return void (await fail("🪞 Donating to yourself is just moving money between pockets."));
     if (recipient.bot) return void (await fail("🤖 Bots can't accept donations."));
-    if (!(await canAfford(sender.id, amount)))
-      return void (await fail(`💸 You don't have **${amount.toLocaleString()} CASH** in your wallet.`));
+    if (!(await canAfford(sender.id, amount, currency)))
+      return void (await fail(`💸 You don't have **${fmt(amount, currency)}** on hand.`));
 
     const { pct, tax, net } = computeDonation(amount);
 
     // Sender pays the full amount; recipient gets it minus the tax.
-    await removeCash(sender.id, amount, `Donation to ${recipient.tag}`);
-    await addCash(recipient.id, net, `Donation from ${sender.tag}`);
+    await removeCash(sender.id, amount, `Donation to ${recipient.tag}`, currency);
+    await addCash(recipient.id, net, `Donation from ${sender.tag}`, currency);
 
     await interaction.reply({
       embeds: [
@@ -56,9 +58,9 @@ export const give: Command = {
           .setColor(0xe91e63)
           .setTitle("🎁 Donation")
           .setDescription(
-            `${sender} gave **${amount.toLocaleString()} 💵 CASH** to ${recipient}!\n` +
-              `🏛️ The taxman took **${pct}%** (${tax.toLocaleString()} CASH).\n` +
-              `${recipient} received **${net.toLocaleString()} 💵 CASH**.`
+            `${sender} gave **${fmt(amount, currency)}** to ${recipient}!\n` +
+              `🏛️ The taxman took **${pct}%** (${tax.toLocaleString()} ${currency.name}).\n` +
+              `${recipient} received **${fmt(net, currency)}**.`
           )
           .setFooter({ text: "Generosity is taxable. Welcome to capitalism." }),
       ],

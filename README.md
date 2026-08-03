@@ -1,8 +1,23 @@
 # 💵 CASH — Discord Economy Bot
 
-A capitalist playground for your Discord server. Members earn CASH through
+A capitalist playground for two Discord servers. Members earn money through
 math and trivia, improve their income with jobs, rob each other, buy server
 perks, and play the stock market — while inflation keeps the economy honest.
+
+## 🌍 Two countries, two currencies
+
+The bot runs in TWO servers at once, like neighboring countries:
+- The home server uses **💵 CASH**; the sister server uses **🪙 COINS**.
+- Everyone can HOLD both, but each server only SPENDS its own.
+- The **exchange rate follows supply**: print twice as much CASH and 1 coin
+  becomes worth 2 cash. Swap currencies anytime with `/exchange` (5% fee).
+- Rewards pay the same real WORTH in both countries.
+- The stock market is **global** — one shared market, quoted in CASH; coins
+  players pay/receive coins at the live rate. Loans live in the currency of
+  the server where they were signed.
+
+Setup: invite the same bot to the sister server, put its ID in `.env` as
+`COINS_GUILD_ID`, run `npm run deploy`, restart.
 
 ## Commands
 
@@ -76,9 +91,8 @@ their investors are paid out. No two companies can share a name.
 ### Other
 | Command | What it does |
 | --- | --- |
-| `/balance` | Wallet, bank, net worth, job, level |
-| `/deposit [amount]` | Move CASH into the theft-proof bank (empty = all) |
-| `/withdraw [amount]` | Take CASH back out so you can spend it (empty = all) |
+| `/balance` | Your CASH, COINS, net worth, job, and the exchange rate |
+| `/exchange` | Swap CASH ↔ COINS at the live rate (5% fee) |
 | `/leaderboard` | Richest, highest net worth, best jobs, best investors, top thieves |
 | `/ping` | Is the bot alive? |
 | `/drop` | (Admins) force a CASH drop in this channel |
@@ -86,9 +100,11 @@ their investors are paid out. No two companies can share a name.
 
 ### Economy rules
 - New members start with **500 CASH** automatically.
-- Every CASH movement is logged with a reason in the database.
-- Only **wallet** money can be stolen — the bank is safe.
-- Shop prices scale ×0.8–×3.0 with the total money in circulation.
+- Every money movement is logged with a reason and currency in the database.
+- All money is carried on hand — and anything on hand can be stolen.
+  Security items are your only protection.
+- Each currency has its own inflation (×0.8–×3.0) based on how much of it
+  is in circulation; the exchange rate follows the two supplies.
 
 ## Setup guide (one time)
 

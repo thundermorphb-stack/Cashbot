@@ -10,12 +10,15 @@ const rest = new REST().setToken(config.token);
 
 try {
   const body = commands.map((c) => c.data.toJSON());
-  log.info(`Registering ${body.length} slash command(s)...`);
-
-  await rest.put(
-    Routes.applicationGuildCommands(config.clientId, config.guildId),
-    { body }
+  const guilds = [config.guildId, config.coinsGuildId].filter(
+    (id): id is string => id !== null
   );
+  log.info(`Registering ${body.length} slash command(s) in ${guilds.length} server(s)...`);
+
+  for (const guildId of guilds) {
+    await rest.put(Routes.applicationGuildCommands(config.clientId, guildId), { body });
+    log.info(`Registered in guild ${guildId}`);
+  }
 
   log.info(`Done! Commands registered: ${body.map((c) => `/${c.name}`).join(", ")}`);
 } catch (error) {

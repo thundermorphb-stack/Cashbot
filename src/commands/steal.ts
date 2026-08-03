@@ -5,7 +5,8 @@
 
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 import type { Command } from "../types.ts";
-import { addCash, getOrCreateUser, removeCash } from "../lib/economy.ts";
+import { addCash, balanceOf, getOrCreateUser, removeCash } from "../lib/economy.ts";
+import { currencyForGuild, fmt } from "../lib/currency.ts";
 import { getActiveCooldown, relativeTime, setCooldown } from "../lib/cooldowns.ts";
 import { getActiveSecurity } from "../lib/shop.ts";
 import {
@@ -45,8 +46,11 @@ export const steal: Command = {
     if (target.id === thiefId) return void (await fail("🪞 You can't rob yourself."));
     if (target.bot) return void (await fail("🤖 Bots have no pockets."));
 
+    const currency = currencyForGuild(interaction.guildId);
     const thief = await getOrCreateUser(thiefId);
     const victim = await getOrCreateUser(target.id);
+    const thiefBalance = balanceOf(thief, currency);
+    const victimBalance = balanceOf(victim, currency);
 
     // ---- Cooldowns: one global, one per victim ----
     const globalCd = await getActiveCooldown(thiefId, "steal");
@@ -62,17 +66,17 @@ export const steal: Command = {
     if (accountAgeHours < NEW_USER_PROTECTION_HOURS)
       return void (await fail(`🛡️ ${target.displayName} is new to the economy and under protection for now.`));
 
-    if (victim.wallet < MIN_TARGET_WALLET)
-      return void (await fail(`🫤 ${target.displayName}'s wallet has less than ${MIN_TARGET_WALLET} CASH — not worth the risk.`));
+    if (victimBalance < MIN_TARGET_WALLET)
+      return void (await fail(`🫤 ${target.displayName} carries less than ${MIN_TARGET_WALLET} ${currency.name} — not worth the risk.`));
 
-    if (amount > victim.wallet)
-      return void (await fail(`💸 ${target.displayName} only carries **${victim.wallet.toLocaleString()} CASH** in their wallet. Aim lower.`));
+    if (amount > victimBalance)
+      return void (await fail(`💸 ${target.displayName} only carries **${fmt(victimBalance, currency)}**. Aim lower.`));
 
     // ---- Thief must be able to pay the 150% fine ----
-    const cap = maxAttempt(thief.wallet);
+    const cap = maxAttempt(thiefBalance);
     if (amount > cap)
       return void (await fail(
-        `⚖️ If you fail, you owe 150% of the attempt. With **${thief.wallet.toLocaleString()} CASH** in your wallet you can attempt at most **${cap.toLocaleString()} CASH**.`
+        `⚖️ If you fail, you owe 150% of the attempt. With **${fmt(thiefBalance, currency)}** on hand you can attempt at most **${cap.toLocaleString()} ${currency.name}**.`
       ));
 
     // ---- Commit: cooldowns start now, win or lose ----
@@ -86,8 +90,8 @@ export const steal: Command = {
       : "";
 
     if (outcome.success) {
-      await removeCash(target.id, outcome.stolen, `Robbed by ${interaction.user.tag}`);
-      await addCash(thiefId, outcome.stolen, "Steal Success");
+      await removeCash(target.id, outcome.stolen, `Robbed by ${interaction.user.tag}`, currency);
+      await addCash(thiefId, outcome.stolen, "Steal Success", currency);
 
       await interaction.reply({
         embeds: [
@@ -95,15 +99,15 @@ export const steal: Command = {
             .setColor(0x2ecc71)
             .setTitle("🦹 Heist Successful!")
             .setDescription(
-              `${interaction.user} robbed **${outcome.stolen.toLocaleString()} 💵 CASH** from ${target}!` +
+              `${interaction.user} robbed **${fmt(outcome.stolen, currency)}** from ${target}!` +
                 securityNote
             )
-            .setFooter({ text: "Crime pays... this time. Bank your CASH to keep it safe!" }),
+            .setFooter({ text: "Crime pays... this time. Buy security from /shop to fight back!" }),
         ],
       });
     } else {
-      await removeCash(thiefId, outcome.penalty, "Failed Steal Attempt");
-      await addCash(target.id, outcome.penalty, "Steal Compensation");
+      await removeCash(thiefId, outcome.penalty, "Failed Steal Attempt", currency);
+      await addCash(target.id, outcome.penalty, "Steal Compensation", currency);
 
       await interaction.reply({
         embeds: [
@@ -112,7 +116,7 @@ export const steal: Command = {
             .setTitle("🚔 Caught Red-Handed!")
             .setDescription(
               `${interaction.user} tried to rob ${target} and got caught!\n` +
-                `They paid **${outcome.penalty.toLocaleString()} 💵 CASH** (150%) to ${target} as compensation.` +
+                `They paid **${fmt(outcome.penalty, currency)}** (150%) to ${target} as compensation.` +
                 securityNote
             )
             .setFooter({ text: "Crime doesn't pay." }),

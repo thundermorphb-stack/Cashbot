@@ -22,8 +22,7 @@ import { leaderboard } from "./leaderboard.ts";
 import { give } from "./give.ts";
 import { grantrolls } from "./grantrolls.ts";
 import { loan } from "./loan.ts";
-import { deposit } from "./deposit.ts";
-import { withdraw } from "./withdraw.ts";
+import { exchange } from "./exchange.ts";
 import { casino } from "./casino.ts";
 import { gamble } from "./gamble.ts";
 import { business } from "./business.ts";
@@ -48,8 +47,7 @@ export const commands: Command[] = [
   give,
   grantrolls,
   loan,
-  deposit,
-  withdraw,
+  exchange,
   casino,
   gamble,
   business,

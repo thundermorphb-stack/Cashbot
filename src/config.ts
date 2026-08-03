@@ -24,6 +24,11 @@ export const config = {
   clientId: required("CLIENT_ID"),
   /** The ID of your Discord server, so commands appear there instantly. */
   guildId: required("GUILD_ID"),
+  /** OPTIONAL: the sister server that uses 🪙 COINS instead of 💵 CASH. */
+  coinsGuildId:
+    process.env.COINS_GUILD_ID && !process.env.COINS_GUILD_ID.startsWith("PASTE_")
+      ? process.env.COINS_GUILD_ID
+      : null,
   /** Where the SQLite database file lives. */
   databaseUrl: process.env.DATABASE_URL ?? "file:./dev.db",
 };

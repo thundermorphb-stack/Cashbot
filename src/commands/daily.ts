@@ -3,7 +3,8 @@
 
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 import type { Command } from "../types.ts";
-import { addEarnings, getOrCreateUser } from "../lib/economy.ts";
+import { addEarnings, getOrCreateUser, balanceOf } from "../lib/economy.ts";
+import { currencyForGuild } from "../lib/currency.ts";
 import { getActiveCooldown, relativeTime, setCooldown } from "../lib/cooldowns.ts";
 
 const COOLDOWN_MINUTES = 24 * 60; // 24 hours
@@ -31,7 +32,8 @@ export const daily: Command = {
       return;
     }
 
-    const paid = await addEarnings(userId, randomInt(REWARD_MIN, REWARD_MAX), "Daily Reward");
+    const currency = currencyForGuild(interaction.guildId);
+    const paid = await addEarnings(userId, randomInt(REWARD_MIN, REWARD_MAX), "Daily Reward", currency);
     await setCooldown(userId, "daily", COOLDOWN_MINUTES);
     const user = await getOrCreateUser(userId);
 
@@ -40,8 +42,8 @@ export const daily: Command = {
       .setColor(0xf1c40f) // gold
       .setTitle("📅 Daily Reward")
       .setDescription(
-        `${interaction.user} collected **${paid.total} 💵 CASH**${bonusNote}!\n` +
-          `Wallet: **${user.wallet.toLocaleString()} CASH**` +
+        `${interaction.user} collected **${paid.total} ${currency.emoji} ${currency.name}**${bonusNote}!\n` +
+          `On hand: **${balanceOf(user, currency).toLocaleString()} ${currency.name}**` +
           paid.garnishNote
       )
       .setFooter({ text: "Come back tomorrow for more!" });

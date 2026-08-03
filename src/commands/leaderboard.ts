@@ -6,6 +6,7 @@ import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import type { Command } from "../types.ts";
 import { prisma } from "../lib/db.ts";
 import { getPrices } from "../lib/stocks.ts";
+import { getExchangeRate } from "../lib/currency.ts";
 import { RARITIES, type Rarity } from "../data/jobs.ts";
 
 const MEDALS = ["🥇", "🥈", "🥉"];
@@ -46,24 +47,25 @@ export const leaderboard: Command = {
     let rows: Row[] = [];
 
     if (board === "richest") {
-      title = "💵 Richest Members";
-      const users = await prisma.user.findMany();
+      title = "💵 Richest Members (cash + coins, in CASH-worth)";
+      const [users, rate] = await Promise.all([prisma.user.findMany(), getExchangeRate()]);
       rows = users
-        .map((user) => ({ userId: user.id, total: user.wallet + user.bank }))
+        .map((user) => ({ userId: user.id, total: user.wallet + Math.round(user.coins * rate) }))
         .sort((a, b) => b.total - a.total)
         .slice(0, 10)
         .map((entry) => ({
           userId: entry.userId,
-          text: `**${entry.total.toLocaleString()} CASH**`,
+          text: `**${entry.total.toLocaleString()} CASH-worth**`,
         }));
     }
 
     if (board === "networth") {
-      title = "💰 Highest Net Worth";
-      const [users, investments, prices] = await Promise.all([
+      title = "💰 Highest Net Worth (money + stocks)";
+      const [users, investments, prices, rate] = await Promise.all([
         prisma.user.findMany(),
         prisma.investment.findMany(),
         getPrices(),
+        getExchangeRate(),
       ]);
       const priceMap = new Map(prices.map((row) => [row.key, row.price]));
       const stockValue = new Map<string, number>();
@@ -74,7 +76,7 @@ export const leaderboard: Command = {
       rows = users
         .map((user) => ({
           userId: user.id,
-          total: user.wallet + user.bank + (stockValue.get(user.id) ?? 0),
+          total: user.wallet + Math.round(user.coins * rate) + (stockValue.get(user.id) ?? 0),
         }))
         .sort((a, b) => b.total - a.total)
         .slice(0, 10)

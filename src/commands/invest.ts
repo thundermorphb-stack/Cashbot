@@ -4,6 +4,7 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import type { Command } from "../types.ts";
 import { buyShares, displayName, resolveStock, searchStocks } from "../lib/stocks.ts";
+import { currencyForGuild, fmt } from "../lib/currency.ts";
 
 export const invest: Command = {
   data: new SlashCommandBuilder()
@@ -51,7 +52,8 @@ export const invest: Command = {
     }
 
     try {
-      const { price, cost, row } = await buyShares(interaction.user.id, stock.key, shares);
+      const currency = currencyForGuild(interaction.guildId);
+      const { price, cost, row } = await buyShares(interaction.user.id, stock.key, shares, currency);
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
@@ -59,7 +61,7 @@ export const invest: Command = {
             .setTitle("🧾 Shares Purchased")
             .setDescription(
               `${interaction.user} bought **${shares.toLocaleString()} share(s)** of **${displayName(row)}**\n` +
-                `at 💵 **${price.toLocaleString()}**/share — total **${cost.toLocaleString()} CASH**.\n` +
+                `at 💵 **${price.toLocaleString()}**/share — paid **${fmt(cost, currency)}**.\n` +
                 `📈 The buy-in pushed the price up!`
             )
             .setFooter({ text: "Track it with /portfolio — sell with /sell" }),

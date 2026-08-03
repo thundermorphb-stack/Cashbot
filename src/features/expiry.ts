@@ -46,9 +46,11 @@ async function undoPerk(guild: Guild, userId: string, itemKey: string, metadata:
 
 /**
  * One sweep: find everything expired, undo it, delete the inventory rows.
- * `guild` may be null in tests — then Discord cleanup is skipped.
+ * A perk's role/channel could live in either country's server, so the undo
+ * is attempted in every guild we're given (it's a no-op where it's absent).
+ * `guilds` may be empty in tests — then Discord cleanup is skipped.
  */
-export async function sweepExpiredItems(guild: Guild | null) {
+export async function sweepExpiredItems(guilds: Guild[]) {
   const expired = await prisma.inventoryItem.findMany({
     where: { expiresAt: { lte: new Date() } },
     include: { shopItem: true },
@@ -59,7 +61,7 @@ export async function sweepExpiredItems(guild: Guild | null) {
     const def = findShopItem(key);
     const metadata = item.metadata ? (JSON.parse(item.metadata) as Record<string, string>) : {};
 
-    if (guild) await undoPerk(guild, item.userId, key, metadata);
+    for (const guild of guilds) await undoPerk(guild, item.userId, key, metadata);
     await prisma.inventoryItem.delete({ where: { id: item.id } });
     log.info(`Expired: ${def?.name ?? key} (user ${item.userId})`);
   }
@@ -67,12 +69,16 @@ export async function sweepExpiredItems(guild: Guild | null) {
   return expired.length;
 }
 
-/** Starts the repeating sweep. Call once when the bot is ready. */
-export function startExpirySweeper(client: Client, guildId: string) {
+/** Starts the repeating sweep across all countries. Call once when ready. */
+export function startExpirySweeper(client: Client, guildIds: string[]) {
   const run = async () => {
     try {
-      const guild = await client.guilds.fetch(guildId);
-      await sweepExpiredItems(guild);
+      const guilds: Guild[] = [];
+      for (const id of guildIds) {
+        const guild = await client.guilds.fetch(id).catch(() => null);
+        if (guild) guilds.push(guild);
+      }
+      await sweepExpiredItems(guilds);
     } catch (error) {
       log.error("Expiry sweep failed:", error);
     }

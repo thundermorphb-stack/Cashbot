@@ -3,22 +3,25 @@
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import type { Command } from "../types.ts";
 import { getInflation, inflatedPrice } from "../lib/economy.ts";
+import { currencyForGuild, getExchangeRate, toLocal } from "../lib/currency.ts";
 import { SHOP_ITEMS } from "../data/shop.ts";
 
 export const shop: Command = {
   data: new SlashCommandBuilder()
     .setName("shop")
-    .setDescription("Browse what your CASH can buy"),
+    .setDescription("Browse what your money can buy"),
 
   async execute(interaction) {
-    const inflation = await getInflation();
+    const currency = currencyForGuild(interaction.guildId);
+    const rate = currency.key === "coins" ? await getExchangeRate() : 1;
+    const inflation = await getInflation(currency);
 
     const list = (type: "security" | "perk") =>
       SHOP_ITEMS.filter((item) => item.type === type)
         .map((item) => {
-          const price = inflatedPrice(item.basePrice, inflation.multiplier);
+          const price = inflatedPrice(toLocal(item.basePrice, currency, rate), inflation.multiplier);
           const duration = item.durationDays ? ` · ${item.durationDays}d` : "";
-          return `**${item.name}** — 💵 **${price.toLocaleString()}**${duration}\n-# ${item.description}`;
+          return `**${item.name}** — ${currency.emoji} **${price.toLocaleString()}**${duration}\n-# ${item.description}`;
         })
         .join("\n");
 
@@ -38,8 +41,8 @@ export const shop: Command = {
           name: "Economy report",
           value:
             `${trend}\n` +
-            `Inflation: **×${inflation.multiplier}** · Money in circulation: ` +
-            `**${inflation.supply.toLocaleString()} CASH** across ${inflation.userCount} member(s)`,
+            `Inflation: **×${inflation.multiplier}** · ${currency.name} in circulation: ` +
+            `**${inflation.supply.toLocaleString()} ${currency.emoji}** · Exchange: 1 🪙 = ${rate} 💵`,
         }
       );
 

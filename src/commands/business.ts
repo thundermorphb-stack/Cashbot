@@ -9,7 +9,8 @@
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 import type { Command } from "../types.ts";
 import { prisma } from "../lib/db.ts";
-import { getInflation, inflatedPrice } from "../lib/economy.ts";
+import { localPrice } from "../lib/economy.ts";
+import { currencyForGuild, fmt } from "../lib/currency.ts";
 import {
   countPlayerCompanies,
   displayName,
@@ -87,19 +88,19 @@ export const business: Command = {
 
     // ---------------- /business found ----------------
     const genre = interaction.options.getString("genre", true) as GenreKey;
-    const inflation = await getInflation();
-    const cost = inflatedPrice(FOUND_COST_BASE, inflation.multiplier);
+    const currency = currencyForGuild(interaction.guildId);
+    const { price: cost } = await localPrice(FOUND_COST_BASE, currency);
     await interaction.deferReply();
 
     try {
-      const { row, name, delisted } = await foundCompany(userId, genre, cost);
+      const { row, name, delisted } = await foundCompany(userId, genre, cost, currency);
       const playerCompanies = await countPlayerCompanies();
 
       let description =
-        `${interaction.user} founded **${displayName(row)}** for **${cost.toLocaleString()} 💵 CASH**!\n` +
+        `${interaction.user} founded **${displayName(row)}** for **${fmt(cost, currency)}**!\n` +
         `Industry: **${GENRES[genre].emoji} ${GENRES[genre].label}** · IPO price: **${NEW_COMPANY_PRICE}**/share\n\n` +
         `📈 Every buy pushes the price up — and ${interaction.user} pockets a **${FOUNDER_CUT * 100}% founder's cut** ` +
-        `of every CASH other players invest. Get people investing!`;
+        `of everything other players invest (from BOTH countries). Get people investing!`;
 
       if (delisted.length > 0) {
         description +=

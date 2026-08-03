@@ -28,8 +28,12 @@ client.once(Events.ClientReady, async (readyClient) => {
   log.info(`CASH is online in ${readyClient.guilds.cache.size} server(s)`);
   await ensureShopItems(); // sync the shop catalog into the database
   await ensureStocks(); // sync the stock market into the database
-  startDrops(readyClient); // begin the random money-drop schedule
-  startExpirySweeper(readyClient, config.guildId); // clean up expired items
+  startDrops(readyClient); // begin the random money-drop schedules
+  // Clean up expired items in every country.
+  startExpirySweeper(
+    readyClient,
+    [config.guildId, config.coinsGuildId].filter((id): id is string => id !== null)
+  );
 });
 
 // Runs every time someone uses a slash command.

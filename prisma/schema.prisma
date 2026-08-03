@@ -14,10 +14,10 @@ datasource db {
 // One row per Discord member who has used the bot.
 model User {
   id          String   @id // Discord user ID (a long number as text)
-  wallet      Int      @default(500) // CASH on hand — can be stolen
-  bank        Int      @default(0) // CASH in the bank — protected
-  totalEarned Int      @default(0)
-  totalSpent  Int      @default(0)
+  wallet      Int      @default(500) // 💵 CASH on hand — usable in the CASH server
+  coins       Int      @default(0) // 🪙 COINS on hand — usable in the COINS server
+  totalEarned Int      @default(0) // lifetime earnings, in CASH-worth
+  totalSpent  Int      @default(0) // lifetime spending, in CASH-worth
   level       Int      @default(1)
   xp          Int      @default(0)
   jobBonus    Float    @default(0) // e.g. 0.25 means +25% income
@@ -39,7 +39,8 @@ model Transaction {
   id        Int      @id @default(autoincrement())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
-  amount    Int // positive = CASH gained, negative = CASH lost
+  amount    Int // positive = money gained, negative = money lost
+  currency  String   @default("cash") // "cash" or "coins"
   reason    String // e.g. "Math Challenge", "Failed Steal Attempt"
   createdAt DateTime @default(now())
 
@@ -108,6 +109,7 @@ model Loan {
   lenderId   String // who gave the money
   borrowerId String // who owes it
   principal  Int // the original amount lent
+  currency   String   @default("cash") // the currency this loan lives in
   ratePct    Float // % interest per 20 minutes, e.g. 2.5
   repaid     Int      @default(0) // paid back so far (garnished or manual)
   startedAt  DateTime @default(now())

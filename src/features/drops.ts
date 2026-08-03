@@ -16,12 +16,13 @@ import {
   type TextChannel,
 } from "discord.js";
 import { addCash } from "../lib/economy.ts";
+import { currencyForGuild, fmt, getExchangeRate, toLocal } from "../lib/currency.ts";
 import { log } from "../logger.ts";
 
 // Tweak these to taste:
 const MIN_MINUTES_BETWEEN_DROPS = 30;
 const MAX_MINUTES_BETWEEN_DROPS = 90;
-const MIN_AMOUNT = 100;
+const MIN_AMOUNT = 100; // in CASH-worth — converted for the coins country
 const MAX_AMOUNT = 1000;
 const CLAIM_WINDOW_MINUTES = 5;
 
@@ -34,17 +35,20 @@ function randomInt(min: number, max: number): number {
  * Used by both the automatic schedule and the admin /drop command.
  */
 export async function postDrop(channel: TextChannel, amount?: number) {
-  const cash = amount ?? randomInt(MIN_AMOUNT, MAX_AMOUNT);
+  const currency = currencyForGuild(channel.guildId);
+  const rate = currency.key === "coins" ? await getExchangeRate() : 1;
+  // Drops are worth the same in both countries — converted at the live rate.
+  const cash = amount ?? toLocal(randomInt(MIN_AMOUNT, MAX_AMOUNT), currency, rate);
 
   const embed = new EmbedBuilder()
     .setColor(0xf1c40f)
-    .setTitle("💵 CASH DROP")
-    .setDescription(`**${cash.toLocaleString()} CASH** appeared!\nFirst to press the button wins it!`)
+    .setTitle(`${currency.emoji} ${currency.name} DROP`)
+    .setDescription(`**${fmt(cash, currency)}** appeared!\nFirst to press the button wins it!`)
     .setFooter({ text: `Disappears in ${CLAIM_WINDOW_MINUTES} minutes` });
 
   const button = new ButtonBuilder()
     .setCustomId("drop-claim")
-    .setLabel(`Claim ${cash.toLocaleString()} CASH`)
+    .setLabel(`Claim ${cash.toLocaleString()} ${currency.name}`)
     .setEmoji("💰")
     .setStyle(ButtonStyle.Success);
 
@@ -61,12 +65,12 @@ export async function postDrop(channel: TextChannel, amount?: number) {
   });
 
   collector.on("collect", async (click) => {
-    await addCash(click.user.id, cash, "Money Drop");
+    await addCash(click.user.id, cash, "Money Drop", currency);
     await click.update({
       embeds: [
         EmbedBuilder.from(embed)
           .setColor(0x2ecc71)
-          .setDescription(`**${click.user}** claimed **${cash.toLocaleString()} 💵 CASH**!`)
+          .setDescription(`**${click.user}** claimed **${fmt(cash, currency)}**!`)
           .setFooter({ text: "Better luck next time, everyone else!" }),
       ],
       components: [], // remove the button
@@ -80,7 +84,7 @@ export async function postDrop(channel: TextChannel, amount?: number) {
         embeds: [
           EmbedBuilder.from(embed)
             .setColor(0x95a5a6)
-            .setDescription(`Nobody claimed the **${cash.toLocaleString()} CASH**... it blew away in the wind. 🍃`)
+            .setDescription(`Nobody claimed the **${fmt(cash, currency)}**... it blew away in the wind. 🍃`)
             .setFooter({ text: "Stay alert for the next drop!" }),
         ],
         components: [],
@@ -89,31 +93,40 @@ export async function postDrop(channel: TextChannel, amount?: number) {
   });
 }
 
-/** Starts the endless random-drop schedule. Call once when the bot is ready. */
+/**
+ * Starts the endless random-drop schedule — one independent schedule per
+ * country. DROP_CHANNEL_ID = the cash server's channel,
+ * COINS_DROP_CHANNEL_ID = the coins server's channel.
+ */
 export function startDrops(client: Client) {
-  const channelId = process.env.DROP_CHANNEL_ID;
-  if (!channelId || channelId.startsWith("PASTE_")) {
-    log.warn("DROP_CHANNEL_ID is not set in .env — automatic money drops are OFF (admins can still use /drop).");
+  const channels = [
+    { label: "CASH", channelId: process.env.DROP_CHANNEL_ID },
+    { label: "COINS", channelId: process.env.COINS_DROP_CHANNEL_ID },
+  ].filter((entry) => entry.channelId && !entry.channelId.startsWith("PASTE_"));
+
+  if (channels.length === 0) {
+    log.warn("No drop channels set in .env — automatic money drops are OFF (admins can still use /drop).");
     return;
   }
 
-  const scheduleNext = () => {
-    const minutes = randomInt(MIN_MINUTES_BETWEEN_DROPS, MAX_MINUTES_BETWEEN_DROPS);
-    log.info(`Next money drop in ${minutes} minutes`);
-    setTimeout(async () => {
-      try {
-        const channel = await client.channels.fetch(channelId);
-        if (channel?.type === ChannelType.GuildText) {
-          await postDrop(channel as TextChannel);
-        } else {
-          log.warn("DROP_CHANNEL_ID does not point to a normal text channel — drop skipped.");
+  for (const entry of channels) {
+    const scheduleNext = () => {
+      const minutes = randomInt(MIN_MINUTES_BETWEEN_DROPS, MAX_MINUTES_BETWEEN_DROPS);
+      log.info(`Next ${entry.label} drop in ${minutes} minutes`);
+      setTimeout(async () => {
+        try {
+          const channel = await client.channels.fetch(entry.channelId!);
+          if (channel?.type === ChannelType.GuildText) {
+            await postDrop(channel as TextChannel);
+          } else {
+            log.warn(`${entry.label} drop channel is not a normal text channel — drop skipped.`);
+          }
+        } catch (error) {
+          log.error(`${entry.label} drop failed:`, error);
         }
-      } catch (error) {
-        log.error("Money drop failed:", error);
-      }
-      scheduleNext(); // and again, forever
-    }, minutes * 60_000);
-  };
-
-  scheduleNext();
+        scheduleNext(); // and again, forever
+      }, minutes * 60_000);
+    };
+    scheduleNext();
+  }
 }

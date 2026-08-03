@@ -4,6 +4,7 @@ import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import type { Command } from "../types.ts";
 import { prisma } from "../lib/db.ts";
 import { displayName, resolveStock, sellShares } from "../lib/stocks.ts";
+import { currencyForGuild, fmt } from "../lib/currency.ts";
 
 export const sell: Command = {
   data: new SlashCommandBuilder()
@@ -59,12 +60,13 @@ export const sell: Command = {
     }
 
     try {
-      const result = await sellShares(interaction.user.id, stock.key, shares);
+      const currency = currencyForGuild(interaction.guildId);
+      const result = await sellShares(interaction.user.id, stock.key, shares, currency);
       const verdict =
         result.profit > 0
-          ? `📈 Profit: **+${result.profit.toLocaleString()} CASH** — nice trade!`
+          ? `📈 Profit: **+${result.profit.toLocaleString()} ${currency.name}** — nice trade!`
           : result.profit < 0
-            ? `📉 Loss: **${result.profit.toLocaleString()} CASH** — ouch.`
+            ? `📉 Loss: **${result.profit.toLocaleString()} ${currency.name}** — ouch.`
             : `➖ Broke exactly even.`;
 
       await interaction.editReply({
@@ -74,7 +76,7 @@ export const sell: Command = {
             .setTitle("💰 Shares Sold")
             .setDescription(
               `${interaction.user} sold **${shares.toLocaleString()} share(s)** of **${displayName(result.row)}**\n` +
-                `at 💵 **${result.price.toLocaleString()}**/share — received **${result.proceeds.toLocaleString()} CASH**.\n${verdict}\n` +
+                `at 💵 **${result.price.toLocaleString()}**/share — received **${fmt(result.proceeds, currency)}**.\n${verdict}\n` +
                 `📉 The sell-off pushed the price down.`
             ),
         ],

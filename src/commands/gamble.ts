@@ -8,6 +8,7 @@
 import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
 import type { Command } from "../types.ts";
 import { addCash, canAfford, removeCash } from "../lib/economy.ts";
+import { currencyForGuild, fmt } from "../lib/currency.ts";
 import { getSetting } from "../lib/settings.ts";
 import {
   CASINO_CHANNEL_KEY,
@@ -105,24 +106,25 @@ export const gamble: Command = {
     const fail = (text: string) =>
       interaction.reply({ content: text, flags: MessageFlags.Ephemeral });
 
-    // ---- The casino gate: only in the marked channel ----
-    const casinoChannel = await getSetting(CASINO_CHANNEL_KEY);
+    // ---- The casino gate: only in this server's marked channel ----
+    const casinoChannel = await getSetting(`${CASINO_CHANNEL_KEY}:${interaction.guildId}`);
     if (!casinoChannel)
       return void (await fail("🚪 There's no casino yet — an admin must run `/casino set` in some channel first."));
     if (interaction.channelId !== casinoChannel)
       return void (await fail(`🎰 Gambling only works in the casino: <#${casinoChannel}>`));
 
+    const currency = currencyForGuild(interaction.guildId);
     const sub = interaction.options.getSubcommand();
     const bet = interaction.options.getInteger("bet", true);
-    if (!(await canAfford(userId, bet)))
-      return void (await fail(`💸 You don't have **${bet.toLocaleString()} CASH** in your wallet.`));
+    if (!(await canAfford(userId, bet, currency)))
+      return void (await fail(`💸 You don't have **${fmt(bet, currency)}** on hand.`));
 
     // ---- Game 1: number guess ----
     if (sub === "number") {
       const guess = interaction.options.getInteger("guess", true);
-      await removeCash(userId, bet, "Casino: Number Guess");
+      await removeCash(userId, bet, "Casino: Number Guess", currency);
       const result = playNumberGuess(bet, guess, randomInt(1, 3));
-      if (result.win) await addCash(userId, result.payout, "Casino Win: Number Guess");
+      if (result.win) await addCash(userId, result.payout, "Casino Win: Number Guess", currency);
 
       await interaction.reply({
         embeds: [
@@ -130,10 +132,10 @@ export const gamble: Command = {
             .setColor(result.win ? 0x2ecc71 : 0xe74c3c)
             .setTitle(result.win ? "🎉 Winner!" : "🎲 House wins!")
             .setDescription(
-              `${interaction.user} bet **${bet.toLocaleString()} 💵** and guessed **${guess}**.\n` +
+              `${interaction.user} bet **${bet.toLocaleString()} ${currency.emoji}** and guessed **${guess}**.\n` +
                 `The number was **${result.rolled}**.\n` +
                 (result.win
-                  ? `They walk away with **${result.payout.toLocaleString()} 💵 CASH**!`
+                  ? `They walk away with **${fmt(result.payout, currency)}**!`
                   : `The casino thanks them for the donation.`)
             ),
         ],
@@ -144,9 +146,9 @@ export const gamble: Command = {
     // ---- Game 2: coinflip ----
     if (sub === "coinflip") {
       const side = interaction.options.getString("side", true) as "heads" | "tails";
-      await removeCash(userId, bet, "Casino: Coinflip");
+      await removeCash(userId, bet, "Casino: Coinflip", currency);
       const result = playCoinflip(bet, side, Math.random() < 0.5 ? "heads" : "tails");
-      if (result.win) await addCash(userId, result.payout, "Casino Win: Coinflip");
+      if (result.win) await addCash(userId, result.payout, "Casino Win: Coinflip", currency);
 
       await interaction.reply({
         embeds: [
@@ -154,10 +156,10 @@ export const gamble: Command = {
             .setColor(result.win ? 0x2ecc71 : 0xe74c3c)
             .setTitle(result.win ? "🪙 Called it!" : "🪙 Wrong side!")
             .setDescription(
-              `${interaction.user} bet **${bet.toLocaleString()} 💵** on **${side}**.\n` +
+              `${interaction.user} bet **${bet.toLocaleString()} ${currency.emoji}** on **${side}**.\n` +
                 `The coin landed on **${result.flip}**.\n` +
                 (result.win
-                  ? `They collect **${result.payout.toLocaleString()} 💵 CASH**!`
+                  ? `They collect **${fmt(result.payout, currency)}**!`
                   : `Gone. Just like that.`)
             ),
         ],
@@ -172,9 +174,9 @@ export const gamble: Command = {
         color: interaction.options.getString("color", true) as "red" | "black",
         suit: interaction.options.getString("suit", true) as Suit,
       };
-      await removeCash(userId, bet, "Casino: Card Guess");
+      await removeCash(userId, bet, "Casino: Card Guess", currency);
       const result = playCards(bet, guess, drawCard());
-      if (result.payout > 0) await addCash(userId, result.payout, "Casino Win: Card Guess");
+      if (result.payout > 0) await addCash(userId, result.payout, "Casino Win: Card Guess", currency);
 
       const mark = (ok: boolean) => (ok ? "✅" : "❌");
       const profit = result.payout - bet;
@@ -184,11 +186,11 @@ export const gamble: Command = {
             .setColor(profit > 0 ? 0x2ecc71 : profit < 0 ? 0xe74c3c : 0x95a5a6)
             .setTitle("🃏 The card is revealed...")
             .setDescription(
-              `${interaction.user} bet **${bet.toLocaleString()} 💵** and guessed ` +
+              `${interaction.user} bet **${bet.toLocaleString()} ${currency.emoji}** and guessed ` +
                 `**${RANK_NAMES[guess.rank - 1]}**, **${guess.color}**, **${guess.suit}**.\n\n` +
                 `The card was **${formatCard(result.card)}**\n` +
                 `Rank ${mark(result.rankOk)} · Color ${mark(result.colorOk)} · Suit ${mark(result.suitOk)}\n\n` +
-                `Multiplier: **×${result.multiplier.toFixed(2)}** → they get back **${result.payout.toLocaleString()} 💵 CASH** ` +
+                `Multiplier: **×${result.multiplier.toFixed(2)}** → they get back **${fmt(result.payout, currency)}** ` +
                 `(${profit >= 0 ? "+" : ""}${profit.toLocaleString()})`
             ),
         ],

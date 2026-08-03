@@ -8,13 +8,12 @@ import {
   removeCash,
   canAfford,
   computeDonation,
-  depositCash,
-  withdrawCash,
   getOrCreateUser,
   STARTING_BALANCE,
   DONATION_TAX_MIN_PCT,
   DONATION_TAX_MAX_PCT,
 } from "../src/lib/economy.ts";
+import { CURRENCIES, computeRate, toLocal, toCashValue, RATE_MIN, RATE_MAX } from "../src/lib/currency.ts";
 
 const TEST_ID = "test-user-000";
 
@@ -54,25 +53,27 @@ check("spending more than you have is blocked", blocked);
 check("canAfford(100) is true", await canAfford(TEST_ID, 100));
 check("canAfford(999999) is false", !(await canAfford(TEST_ID, 999999)));
 
-// 5a. Banking: deposits and withdrawals move money without changing totals.
-const beforeBank = await getOrCreateUser(TEST_ID);
-const dep = await depositCash(TEST_ID, 200);
-check("deposit moves 200 from wallet to bank", dep.wallet === beforeBank.wallet - 200 && dep.bank === 200);
-const wit = await withdrawCash(TEST_ID, 50);
-check("withdraw moves 50 back to the wallet", wit.wallet === dep.wallet + 50 && wit.bank === 150);
-const afterBank = await getOrCreateUser(TEST_ID);
-check(
-  "banking never changes totalEarned/totalSpent",
-  afterBank.totalEarned === beforeBank.totalEarned && afterBank.totalSpent === beforeBank.totalSpent
-);
-let overdraft = false;
+// 5a. Two currencies: coins are a separate pocket from cash.
+const beforeCoins = await getOrCreateUser(TEST_ID);
+const withCoins = await addCash(TEST_ID, 300, "Coins Test", CURRENCIES.coins);
+check("earning coins fills the coins pocket, not the wallet", withCoins.coins === 300 && withCoins.wallet === beforeCoins.wallet);
+check("canAfford checks the right pocket", (await canAfford(TEST_ID, 300, CURRENCIES.coins)) && !(await canAfford(TEST_ID, 999_999, CURRENCIES.coins)));
+let coinsOverdraft = false;
 try {
-  await withdrawCash(TEST_ID, 999_999);
+  await removeCash(TEST_ID, 999_999, "Impossible", CURRENCIES.coins);
 } catch {
-  overdraft = true;
+  coinsOverdraft = true;
 }
-check("withdrawing more than the bank holds is blocked", overdraft);
-await withdrawCash(TEST_ID); // empty the bank again for the checks below
+check("overspending coins is blocked", coinsOverdraft);
+await removeCash(TEST_ID, 300, "Coins Test Cleanup", CURRENCIES.coins);
+
+// 5a2. Exchange-rate math: supply decides worth.
+check("equal supplies → 1 coin = 1 cash", computeRate(100_000, 100_000) === 1);
+check("double the cash supply → 1 coin = ~2 cash", computeRate(225_000, 100_000) === 2);
+check(`rate is clamped to [${RATE_MIN}, ${RATE_MAX}]`, computeRate(99_999_999, 0) === RATE_MAX && computeRate(0, 99_999_999) === RATE_MIN);
+check("toLocal converts cash-worth into coins at the rate", toLocal(100, CURRENCIES.coins, 2) === 50);
+check("toCashValue converts coins back into cash-worth", toCashValue(50, CURRENCIES.coins, 2) === 100);
+check("cash amounts pass through both conversions unchanged", toLocal(100, CURRENCIES.cash, 2) === 100 && toCashValue(100, CURRENCIES.cash, 2) === 100);
 
 // 5b. Donation tax always lands between 7% and 10%, and nothing goes missing.
 let taxOk = true;
@@ -101,8 +102,8 @@ const logbook = await prisma.transaction.findMany({
   where: { userId: TEST_ID },
   orderBy: { id: "asc" },
 });
-// welcome bonus, math, failed steal + 3 bank moves (deposit, withdraw, withdraw-all)
-check("every movement was logged (6 transactions)", logbook.length === 6);
+// welcome bonus, math, failed steal + 2 coins test moves
+check("every movement was logged (5 transactions)", logbook.length === 5);
 
 console.log("\nTransaction log for the test user:");
 for (const t of logbook) {
