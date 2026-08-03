@@ -1,9 +1,9 @@
-// /sell — sell shares at the current price and pocket the CASH.
+// /sell — sell shares at the current price. Company name autocompletes.
 
 import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import type { Command } from "../types.ts";
-import { sellShares } from "../lib/stocks.ts";
-import { STOCKS, findStock } from "../data/stocks.ts";
+import { prisma } from "../lib/db.ts";
+import { displayName, resolveStock, sellShares } from "../lib/stocks.ts";
 
 export const sell: Command = {
   data: new SlashCommandBuilder()
@@ -12,9 +12,9 @@ export const sell: Command = {
     .addStringOption((option) =>
       option
         .setName("company")
-        .setDescription("Which company's shares to sell")
+        .setDescription("Start typing a name — the bot will suggest matches")
         .setRequired(true)
-        .addChoices(...STOCKS.map((stock) => ({ name: stock.name, value: stock.key })))
+        .setAutocomplete(true)
     )
     .addIntegerOption((option) =>
       option
@@ -25,13 +25,41 @@ export const sell: Command = {
         .setRequired(true)
     ),
 
+  // Suggest only companies the seller actually owns shares in.
+  async autocomplete(interaction) {
+    const query = interaction.options.getFocused().trim().toLowerCase();
+    const lots = await prisma.investment.findMany({
+      where: { userId: interaction.user.id },
+      select: { company: true, shares: true },
+    });
+    const owned = new Map<string, number>();
+    for (const lot of lots) owned.set(lot.company, (owned.get(lot.company) ?? 0) + lot.shares);
+
+    const rows = await prisma.stock.findMany({ where: { key: { in: [...owned.keys()] } } });
+    await interaction.respond(
+      rows
+        .filter((row) => !query || row.name.toLowerCase().includes(query))
+        .slice(0, 25)
+        .map((row) => ({
+          name: `${displayName(row)} — you own ${owned.get(row.key)} share(s)`.slice(0, 100),
+          value: row.key,
+        }))
+    );
+  },
+
   async execute(interaction) {
-    const company = interaction.options.getString("company", true);
+    const input = interaction.options.getString("company", true);
     const shares = interaction.options.getInteger("shares", true);
     await interaction.deferReply();
 
+    const stock = await resolveStock(input);
+    if (!stock) {
+      await interaction.editReply(`🔍 No company matches "${input}".`);
+      return;
+    }
+
     try {
-      const result = await sellShares(interaction.user.id, company, shares);
+      const result = await sellShares(interaction.user.id, stock.key, shares);
       const verdict =
         result.profit > 0
           ? `📈 Profit: **+${result.profit.toLocaleString()} CASH** — nice trade!`
@@ -45,8 +73,9 @@ export const sell: Command = {
             .setColor(result.profit >= 0 ? 0x2ecc71 : 0xe74c3c)
             .setTitle("💰 Shares Sold")
             .setDescription(
-              `${interaction.user} sold **${shares.toLocaleString()} share(s)** of **${findStock(company)!.name}**\n` +
-                `at 💵 **${result.price.toLocaleString()}**/share — received **${result.proceeds.toLocaleString()} CASH**.\n${verdict}`
+              `${interaction.user} sold **${shares.toLocaleString()} share(s)** of **${displayName(result.row)}**\n` +
+                `at 💵 **${result.price.toLocaleString()}**/share — received **${result.proceeds.toLocaleString()} CASH**.\n${verdict}\n` +
+                `📉 The sell-off pushed the price down.`
             ),
         ],
       });

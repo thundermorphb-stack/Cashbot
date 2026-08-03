@@ -34,6 +34,15 @@ client.once(Events.ClientReady, async (readyClient) => {
 
 // Runs every time someone uses a slash command.
 client.on(Events.InteractionCreate, async (interaction) => {
+  // Autocomplete: fill the suggestion list while the user is typing.
+  if (interaction.isAutocomplete()) {
+    const command = commandMap.get(interaction.commandName);
+    await command?.autocomplete?.(interaction).catch((error) => {
+      log.error(`Autocomplete error in /${interaction.commandName}:`, error);
+    });
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const command = commandMap.get(interaction.commandName);

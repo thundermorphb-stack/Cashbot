@@ -70,7 +70,7 @@ export const gamble: Command = {
     .addSubcommand((sub) =>
       sub
         .setName("cards")
-        .setDescription("Guess the hidden card: +25% per correct part, -25% per wrong part")
+        .setDescription("Guess the hidden card: rank +250%, suit +60%, color +25% — misses -25%")
         .addIntegerOption(betOption)
         .addIntegerOption((option) =>
           option

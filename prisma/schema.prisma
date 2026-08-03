@@ -116,12 +116,20 @@ model Loan {
   @@index([lenderId])
 }
 
-// Current market price of each fictional company (random walk over time).
+// A listed company. The 5 defaults have no owner; players can found their
+// own (the bot names them). Buying pushes the price up, selling pushes it
+// down, and a small random walk keeps things moving.
 model Stock {
-  key       String   @id // e.g. "technova" — matches src/data/stocks.ts
-  price     Int
-  prevPrice Int
-  updatedAt DateTime @default(now())
+  key        String   @id // stable id, e.g. "technova" or "quantumlabs"
+  name       String   @default("") // display name — kept unique in code
+  genre      String   @default("tech")
+  ownerId    String? // empty = default company; otherwise the founder
+  price      Int
+  prevPrice  Int
+  basePrice  Int      @default(100)
+  volatility Float    @default(0.1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now())
 }
 
 // Tracks when a user last used a command with a cooldown (/math, /daily, ...).

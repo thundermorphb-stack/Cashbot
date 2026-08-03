@@ -3,6 +3,7 @@
 // so the rest of the bot knows how to register and run it.
 
 import type {
+  AutocompleteInteraction,
   ChatInputCommandInteraction,
   SlashCommandBuilder,
   SlashCommandOptionsOnlyBuilder,
@@ -17,4 +18,6 @@ export interface Command {
     | SlashCommandSubcommandsOnlyBuilder;
   /** The code that runs when someone uses the command. */
   execute: (interaction: ChatInputCommandInteraction) => Promise<void>;
+  /** Optional: fills the suggestion list while the user is still typing. */
+  autocomplete?: (interaction: AutocompleteInteraction) => Promise<void>;
 }

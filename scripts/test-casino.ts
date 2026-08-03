@@ -22,7 +22,7 @@ function check(label: string, ok: boolean) {
 
 // ---- Number guess ----
 const numWin = playNumberGuess(100, 2, 2);
-check(`number guess win pays ${NUMBER_PAYOUT}× (250)`, numWin.win && numWin.payout === 250);
+check(`number guess win pays ${NUMBER_PAYOUT}× (280)`, numWin.win && numWin.payout === 280);
 check("number guess loss pays 0", !playNumberGuess(100, 1, 3).win && playNumberGuess(100, 1, 3).payout === 0);
 
 // ---- Coinflip ----
@@ -33,17 +33,27 @@ check("coinflip loss pays 0", playCoinflip(100, "heads", "tails").payout === 0);
 // ---- Cards: every combination of right/wrong parts ----
 const card = { rank: 12, suit: "hearts" } as const; // Q♥️ (red)
 
+// Difficulty-scaled rewards: rank +250% (1-in-13), suit +60% (1-in-4),
+// color +25% (1-in-2); every miss -25%.
 const allRight = playCards(400, { rank: 12, color: "red", suit: "hearts" }, card);
-check("3 correct → ×1.75 (700 back from 400)", allRight.multiplier === 1.75 && allRight.payout === 700);
+check("all 3 correct → ×4.35 jackpot (1740 back from 400)", allRight.multiplier === 4.35 && allRight.payout === 1740);
 
-const twoRight = playCards(400, { rank: 5, color: "red", suit: "hearts" }, card);
-check("2 correct → ×1.25 (500 back)", twoRight.multiplier === 1.25 && twoRight.payout === 500);
+const colorSuit = playCards(400, { rank: 5, color: "red", suit: "hearts" }, card);
+check("color+suit right, rank wrong → ×1.6 (640 back)", colorSuit.multiplier === 1.6 && colorSuit.payout === 640);
 
-const oneRight = playCards(400, { rank: 5, color: "red", suit: "spades" }, card);
-check("1 correct → ×0.75 (300 back)", oneRight.multiplier === 0.75 && oneRight.payout === 300);
+const colorOnly = playCards(400, { rank: 5, color: "red", suit: "spades" }, card);
+check("only color right → ×0.75 (300 back)", colorOnly.multiplier === 0.75 && colorOnly.payout === 300);
+
+const rankOnly = playCards(400, { rank: 12, color: "black", suit: "spades" }, card);
+check("only rank right → ×3.0 (1200 back)", rankOnly.multiplier === 3 && rankOnly.payout === 1200);
 
 const allWrong = playCards(400, { rank: 5, color: "black", suit: "spades" }, card);
 check("0 correct → ×0.25 (100 back)", allWrong.multiplier === 0.25 && allWrong.payout === 100);
+
+check(
+  "difficulty ladder holds: coinflip < number < cards jackpot",
+  COINFLIP_PAYOUT < NUMBER_PAYOUT && NUMBER_PAYOUT < allRight.multiplier
+);
 
 // Suit → color consistency, and drawn cards are always valid.
 check("hearts/diamonds are red, spades/clubs are black",

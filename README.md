@@ -30,9 +30,9 @@ perks, and play the stock market — while inflation keeps the economy honest.
 | Command | What it does |
 | --- | --- |
 | `/casino set` | (Admins) mark the current channel as the casino |
-| `/gamble number bet guess` | Guess 1–3 — win 2.5× your bet |
-| `/gamble coinflip bet side` | Heads or tails — win 1.9× your bet |
-| `/gamble cards bet rank color suit` | Guess the hidden card: +25% per correct part, −25% per wrong part (×0.25 to ×1.75) |
+| `/gamble coinflip bet side` | Heads or tails (easiest) — win 1.9× your bet |
+| `/gamble number bet guess` | Guess 1–3 (harder) — win 2.8× your bet |
+| `/gamble cards bet rank color suit` | Hardest: rank +250%, suit +60%, color +25%, misses −25% (×0.25 up to ×4.35) |
 
 Gambling only works in the marked casino channel. The house edge slowly
 removes CASH from circulation, which keeps inflation in check.
@@ -57,13 +57,21 @@ garnished straight to the lender until the debt is cleared. Debt is capped at
 | `/buy` | Buy nicknames, role colors, custom roles, emojis, stickers, announcements, private channels, VIP, security |
 | `/inventory` | What you own, with expiry countdowns (expired perks are auto-removed) |
 
-### Investing
+### Investing & Business
 | Command | What it does |
 | --- | --- |
-| `/stocks` | Market board — 5 fictional companies, prices move every ~15 min |
-| `/invest` | Buy shares |
+| `/stocks` | Market board — shows the TOP 10 companies by money invested |
+| `/invest` | Buy shares — start typing a name and the bot suggests matches |
 | `/portfolio` | Your holdings and profit/loss |
-| `/sell` | Sell shares (oldest lots first) |
+| `/sell` | Sell shares (oldest lots first) — autocompletes what you own |
+| `/business found` | Start your own company (bot names it, 9 genres, max 2 each) |
+| `/business view` | Your companies, investors, and share stats |
+
+Prices move with time AND demand: every buy pushes a stock up (~0.5%/share),
+every sell pushes it down. Founders earn a **5% cut** of every CASH other
+players invest in their company. The 5 default companies stay listed until
+the server has **10 player-founded companies** — then they're delisted and
+their investors are paid out. No two companies can share a name.
 
 ### Other
 | Command | What it does |

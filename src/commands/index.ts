@@ -26,6 +26,7 @@ import { deposit } from "./deposit.ts";
 import { withdraw } from "./withdraw.ts";
 import { casino } from "./casino.ts";
 import { gamble } from "./gamble.ts";
+import { business } from "./business.ts";
 
 export const commands: Command[] = [
   ping,
@@ -51,4 +52,5 @@ export const commands: Command[] = [
   withdraw,
   casino,
   gamble,
+  business,
 ];

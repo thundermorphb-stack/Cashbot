@@ -6,9 +6,13 @@ export const CASINO_CHANNEL_KEY = "casino_channel";
 export const MIN_BET = 10;
 export const MAX_BET = 100_000;
 
+// Payouts scale with difficulty: the harder the game, the higher the profit.
+//   Coinflip  (1-in-2 chance)  → 1.9× your bet
+//   Number    (1-in-3 chance)  → 2.8× your bet
+//   Cards     (hardest)        → up to 4.35× if you nail all three parts
+
 // ---- Game 1: guess a number between 1 and 3 ----
-// Win chance 1/3, payout 2.5× the bet (house keeps the difference).
-export const NUMBER_PAYOUT = 2.5;
+export const NUMBER_PAYOUT = 2.8;
 
 export function playNumberGuess(bet: number, guess: number, rolled: number) {
   const win = guess === rolled;
@@ -26,8 +30,12 @@ export function playCoinflip(bet: number, guess: "heads" | "tails", flip: "heads
 
 // ---- Game 3: card guessing ----
 // Guess the rank, color, and suit of a hidden card.
-// Each correct guess: +25% profit. Each wrong guess: -25%.
-// Best case ×1.75 payout, worst case ×0.25 (you keep a quarter of your bet).
+// Rewards scale with how hard each part is to hit; every miss costs -25%.
+//   Color (1-in-2):  +25%      Suit (1-in-4): +60%      Rank (1-in-13): +250%
+// Best case ×4.35 payout, worst case ×0.25 (you keep a quarter of your bet).
+
+export const CARD_REWARDS = { rank: 2.5, color: 0.25, suit: 0.6 } as const;
+export const CARD_PENALTY = 0.25;
 
 export const SUITS = ["spades", "hearts", "diamonds", "clubs"] as const;
 export type Suit = (typeof SUITS)[number];
@@ -70,8 +78,11 @@ export function playCards(
   const colorOk = guess.color === suitColor(card.suit);
   const suitOk = guess.suit === card.suit;
   const correct = [rankOk, colorOk, suitOk].filter(Boolean).length;
-  // +25% per correct, -25% per wrong: 3 correct → ×1.75, 0 correct → ×0.25
-  const multiplier = 1 + 0.25 * correct - 0.25 * (3 - correct);
+  const multiplier =
+    1 +
+    (rankOk ? CARD_REWARDS.rank : -CARD_PENALTY) +
+    (colorOk ? CARD_REWARDS.color : -CARD_PENALTY) +
+    (suitOk ? CARD_REWARDS.suit : -CARD_PENALTY);
   return {
     card,
     rankOk,

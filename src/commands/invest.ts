@@ -1,9 +1,9 @@
-// /invest — buy shares of a fictional company at the current price.
+// /invest — buy shares. Start typing the company name and the bot suggests
+// the closest matches (that's how you find niche companies not on /stocks).
 
-import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
+import { EmbedBuilder, SlashCommandBuilder } from "discord.js";
 import type { Command } from "../types.ts";
-import { buyShares } from "../lib/stocks.ts";
-import { STOCKS, findStock } from "../data/stocks.ts";
+import { buyShares, displayName, resolveStock, searchStocks } from "../lib/stocks.ts";
 
 export const invest: Command = {
   data: new SlashCommandBuilder()
@@ -12,9 +12,9 @@ export const invest: Command = {
     .addStringOption((option) =>
       option
         .setName("company")
-        .setDescription("Which company to invest in (see /stocks for prices)")
+        .setDescription("Start typing a name — the bot will suggest matches")
         .setRequired(true)
-        .addChoices(...STOCKS.map((stock) => ({ name: stock.name, value: stock.key })))
+        .setAutocomplete(true)
     )
     .addIntegerOption((option) =>
       option
@@ -25,21 +25,42 @@ export const invest: Command = {
         .setRequired(true)
     ),
 
+  // Fills the dropdown while the user is typing a company name.
+  async autocomplete(interaction) {
+    const query = interaction.options.getFocused();
+    const rows = await searchStocks(query);
+    await interaction.respond(
+      rows.map((row) => ({
+        name: `${displayName(row)} — ${row.price.toLocaleString()}/share`.slice(0, 100),
+        value: row.key,
+      }))
+    );
+  },
+
   async execute(interaction) {
-    const company = interaction.options.getString("company", true);
+    const input = interaction.options.getString("company", true);
     const shares = interaction.options.getInteger("shares", true);
     await interaction.deferReply();
 
+    const stock = await resolveStock(input);
+    if (!stock) {
+      await interaction.editReply(
+        `🔍 No company matches "${input}". Check /stocks or start typing to see suggestions.`
+      );
+      return;
+    }
+
     try {
-      const { price, cost } = await buyShares(interaction.user.id, company, shares);
+      const { price, cost, row } = await buyShares(interaction.user.id, stock.key, shares);
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setColor(0x16a085)
             .setTitle("🧾 Shares Purchased")
             .setDescription(
-              `${interaction.user} bought **${shares.toLocaleString()} share(s)** of **${findStock(company)!.name}**\n` +
-                `at 💵 **${price.toLocaleString()}**/share — total **${cost.toLocaleString()} CASH**.`
+              `${interaction.user} bought **${shares.toLocaleString()} share(s)** of **${displayName(row)}**\n` +
+                `at 💵 **${price.toLocaleString()}**/share — total **${cost.toLocaleString()} CASH**.\n` +
+                `📈 The buy-in pushed the price up!`
             )
             .setFooter({ text: "Track it with /portfolio — sell with /sell" }),
         ],

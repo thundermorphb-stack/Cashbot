@@ -7,7 +7,7 @@ import { buyShares, sellShares, getPortfolio, nextPrice, ensureStocks } from "..
 import { ensureShopItems, addToInventory } from "../src/lib/shop.ts";
 import { sweepExpiredItems } from "../src/features/expiry.ts";
 import { findShopItem } from "../src/data/shop.ts";
-import { STOCKS } from "../src/data/stocks.ts";
+import { DEFAULT_STOCKS as STOCKS } from "../src/data/stocks.ts";
 
 const TEST_ID = "test-user-000";
 let failures = 0;
@@ -37,9 +37,9 @@ let price = def.basePrice;
 for (let i = 0; i < 10_000; i++) {
   price = nextPrice(price, def.basePrice, def.volatility);
   const floor = Math.max(5, Math.round(def.basePrice * 0.25));
-  if (price < floor || price > def.basePrice * 4) priceInBounds = false;
+  if (price < floor || price > def.basePrice * 20) priceInBounds = false;
 }
-check("10,000 price steps never leave the 25%-400% guard rails", priceInBounds);
+check("10,000 price steps never leave the 25%-2000% guard rails", priceInBounds);
 
 // ---- Buying and selling ----
 await addCash(TEST_ID, 100_000, "Test Funding");
