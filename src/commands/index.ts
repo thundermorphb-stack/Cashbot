@@ -24,6 +24,8 @@ import { grantrolls } from "./grantrolls.ts";
 import { loan } from "./loan.ts";
 import { deposit } from "./deposit.ts";
 import { withdraw } from "./withdraw.ts";
+import { casino } from "./casino.ts";
+import { gamble } from "./gamble.ts";
 
 export const commands: Command[] = [
   ping,
@@ -47,4 +49,6 @@ export const commands: Command[] = [
   loan,
   deposit,
   withdraw,
+  casino,
+  gamble,
 ];

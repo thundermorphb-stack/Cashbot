@@ -26,6 +26,17 @@ perks, and play the stock market — while inflation keeps the economy honest.
 | `/steal @user amount` | Rob someone's wallet. Win: take 50–100% of the attempt. Lose: pay them 150% |
 | 🛡️ Security items | Padlock → Bodyguard lower thieves' success chance against you (see `/shop`) |
 
+### 🎰 Casino
+| Command | What it does |
+| --- | --- |
+| `/casino set` | (Admins) mark the current channel as the casino |
+| `/gamble number bet guess` | Guess 1–3 — win 2.5× your bet |
+| `/gamble coinflip bet side` | Heads or tails — win 1.9× your bet |
+| `/gamble cards bet rank color suit` | Guess the hidden card: +25% per correct part, −25% per wrong part (×0.25 to ×1.75) |
+
+Gambling only works in the marked casino channel. The house edge slowly
+removes CASH from circulation, which keeps inflation in check.
+
 ### Money between players
 | Command | What it does |
 | --- | --- |

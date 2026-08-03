@@ -94,6 +94,12 @@ model Investment {
   @@index([userId])
 }
 
+// Simple key-value storage for server settings (e.g. the casino channel).
+model Setting {
+  key   String @id
+  value String
+}
+
 // A player-to-player loan. Interest grows every 20 minutes (simple interest,
 // capped at 5× the principal). While one of these exists, the borrower's
 // earnings are garnished straight to the lender.

@@ -40,6 +40,19 @@ function pick<T>(items: T[]): T {
   return items[randomInt(0, items.length - 1)];
 }
 
+/**
+ * Understands answers the way humans type them:
+ * "1,050" · " 42 " · "x=6" · "x = -6" · "168.0" · "answer: 7"
+ * Returns null only if there's no number at all.
+ */
+export function parseAnswer(raw: string): number | null {
+  const cleaned = raw.toLowerCase().replace(/[,\s]/g, "").replace(/[–—−]/g, "-");
+  const match = cleaned.match(/-?\d+(\.\d+)?/);
+  if (!match) return null;
+  const value = Number(match[0]);
+  return Number.isFinite(value) ? value : null;
+}
+
 type Question = { question: string; answer: number };
 
 // ---- Easy: 3-digit mental arithmetic ----
@@ -187,7 +200,7 @@ export const math: Command = {
     }
 
     // 4. Check the answer and pay out.
-    const given = Number(submitted.fields.getTextInputValue("answer").trim());
+    const given = parseAnswer(submitted.fields.getTextInputValue("answer"));
 
     if (given === answer) {
       const { min, max } = REWARDS[difficulty];
