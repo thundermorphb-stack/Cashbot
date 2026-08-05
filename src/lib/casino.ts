@@ -31,10 +31,10 @@ export function playCoinflip(bet: number, guess: "heads" | "tails", flip: "heads
 // ---- Game 3: card guessing ----
 // Guess the rank, color, and suit of a hidden card.
 // Rewards scale with how hard each part is to hit; every miss costs -25%.
-//   Color (1-in-2):  +25%      Suit (1-in-4): +60%      Rank (1-in-13): +250%
-// Best case ×4.35 payout, worst case ×0.25 (you keep a quarter of your bet).
+//   Color (1-in-2):  +30%      Suit (1-in-4): +80%      Rank (1-in-13): +350%
+// Best case ×5.6 payout, worst case ×0.25 (you keep a quarter of your bet).
 
-export const CARD_REWARDS = { rank: 2.5, color: 0.25, suit: 0.6 } as const;
+export const CARD_REWARDS = { rank: 3.5, color: 0.3, suit: 0.8 } as const;
 export const CARD_PENALTY = 0.25;
 
 export const SUITS = ["spades", "hearts", "diamonds", "clubs"] as const;

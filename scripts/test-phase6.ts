@@ -52,8 +52,25 @@ check("wallet went down by exactly the cost", afterBuy!.wallet === 100_500 - buy
 let portfolio = await getPortfolio(TEST_ID);
 check("portfolio shows the 10 shares", portfolio.length === 1 && portfolio[0].shares === 10);
 
+// The buy-then-instantly-sell exploit is dead: new shares must settle first.
+let settling = false;
+try {
+  await sellShares(TEST_ID, def.key, 1);
+} catch {
+  settling = true;
+}
+check("freshly bought shares can't be sold (30-min settlement)", settling);
+await prisma.investment.updateMany({
+  where: { userId: TEST_ID },
+  data: { boughtAt: new Date(Date.now() - 31 * 60_000) }, // pretend time passed
+});
+
 const sale = await sellShares(TEST_ID, def.key, 4);
-check("sold 4 shares for price × 4", sale.proceeds === sale.price * 4);
+const gross = sale.price * 4;
+check(
+  "sale pays the post-impact price × 4 minus the 5% broker fee",
+  sale.proceeds === gross - Math.round(gross * 0.05) && sale.fee === Math.round(gross * 0.05)
+);
 
 portfolio = await getPortfolio(TEST_ID);
 check("6 shares remain after selling 4", portfolio[0].shares === 6);

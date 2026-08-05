@@ -44,6 +44,7 @@ export const daily: Command = {
       .setDescription(
         `${interaction.user} collected **${paid.total} ${currency.emoji} ${currency.name}**${bonusNote}!\n` +
           `On hand: **${balanceOf(user, currency).toLocaleString()} ${currency.name}**` +
+          paid.taxNote +
           paid.garnishNote
       )
       .setFooter({ text: "Come back tomorrow for more!" });

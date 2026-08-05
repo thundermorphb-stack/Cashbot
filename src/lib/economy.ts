@@ -16,6 +16,26 @@ import {
   toLocal,
   type Currency,
 } from "./currency.ts";
+import { fundCompanyWithTax } from "./stocks.ts";
+
+// ---------------- Progressive income tax ----------------
+// The richer you are, the more the taxman takes from everything you earn.
+// Collected tax funds a random company's stock (see fundCompanyWithTax).
+
+export const TAX_BRACKETS: Array<{ below: number; rate: number }> = [
+  { below: 5_000, rate: 0 }, // the poor earn tax-free
+  { below: 20_000, rate: 0.1 },
+  { below: 50_000, rate: 0.2 },
+  { below: Infinity, rate: 0.3 }, // the rich fund the economy
+];
+
+/** The tax rate for someone carrying `worth` (in CASH-worth) on hand. */
+export function taxRateForWealth(worth: number): number {
+  for (const bracket of TAX_BRACKETS) {
+    if (worth < bracket.below) return bracket.rate;
+  }
+  return TAX_BRACKETS[TAX_BRACKETS.length - 1].rate;
+}
 
 export const STARTING_BALANCE = 500;
 export const CURRENCY = "💵 CASH";
@@ -129,11 +149,26 @@ export async function addEarnings(
   currency: Currency = CURRENCIES.cash
 ) {
   const user = await getOrCreateUser(discordId);
-  const rate = currency.key === "coins" ? await getExchangeRate() : 1;
+  const rate = await getExchangeRate();
   const localBase = toLocal(baseCashAmount, currency, rate);
   const bonus = Math.round(localBase * user.jobBonus);
-  const total = localBase + bonus;
+  const gross = localBase + bonus;
+
+  // Progressive income tax, based on everything they carry (in CASH-worth).
+  const wealth = user.wallet + Math.round(user.coins * rate);
+  const taxRate = taxRateForWealth(wealth);
+  const tax = Math.round(gross * taxRate);
+  const total = gross - tax;
+
   await addCash(discordId, total, reason, currency);
+
+  let taxNote = "";
+  if (tax > 0) {
+    const funded = await fundCompanyWithTax(toCashValue(tax, currency, rate));
+    taxNote =
+      `\n🏛️ Income tax: **-${tax.toLocaleString()} ${currency.name}** (${Math.round(taxRate * 100)}%)` +
+      (funded ? ` → the government funded **${funded.name}** 📈` : "");
+  }
 
   let garnishNote = "";
   const garnish = await applyGarnishment(discordId, total, currency);
@@ -145,7 +180,7 @@ export async function addEarnings(
         : ` — **debt fully paid!** 🎉`);
   }
 
-  return { total, base: localBase, bonus, garnishNote };
+  return { total, base: localBase, bonus, tax, taxNote, garnishNote };
 }
 
 /** True if the user has at least `amount` of the currency on hand. */

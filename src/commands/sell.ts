@@ -76,8 +76,9 @@ export const sell: Command = {
             .setTitle("💰 Shares Sold")
             .setDescription(
               `${interaction.user} sold **${shares.toLocaleString()} share(s)** of **${displayName(result.row)}**\n` +
-                `at 💵 **${result.price.toLocaleString()}**/share — received **${fmt(result.proceeds, currency)}**.\n${verdict}\n` +
-                `📉 The sell-off pushed the price down.`
+                `at 💵 **${result.price.toLocaleString()}**/share — received **${fmt(result.proceeds, currency)}** ` +
+                `(broker fee: ${result.fee.toLocaleString()}).\n${verdict}\n` +
+                `📉 Your sell-off moved the market — the sale executed at the lower price.`
             ),
         ],
       });

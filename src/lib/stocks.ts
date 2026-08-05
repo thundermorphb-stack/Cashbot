@@ -37,6 +37,11 @@ const DELISTED_FLAG = "defaults_delisted";
 const IMPACT_PER_SHARE = 0.005;
 const MAX_IMPACT = 0.25;
 
+// Anti-flipping rules: you can't pump a stock with a big buy and instantly
+// cash out at the top.
+export const SETTLEMENT_MINUTES = 30; // new shares are locked for 30 minutes
+export const BROKER_FEE = 0.05; // the broker takes 5% of every sale
+
 type StockRow = Awaited<ReturnType<typeof prisma.stock.findFirstOrThrow>>;
 
 export function displayName(row: { name: string; genre: string }): string {
@@ -180,7 +185,12 @@ export async function buyShares(
   return { price: row.price, cost, row, founderCut, currency };
 }
 
-/** Sells shares (oldest lots first); proceeds arrive in the local currency. */
+/**
+ * Sells shares (oldest lots first); proceeds arrive in the local currency.
+ * Anti-flipping: shares bought less than 30 minutes ago can't be sold yet,
+ * the sale executes at the price AFTER your own sell-off crashes it,
+ * and the broker takes a 5% fee.
+ */
 export async function sellShares(
   userId: string,
   stockKey: string,
@@ -190,18 +200,30 @@ export async function sellShares(
   const row = await prisma.stock.findUnique({ where: { key: stockKey } });
   if (!row) throw new RangeError("That company isn't listed (anymore).");
 
+  const settledBefore = new Date(Date.now() - SETTLEMENT_MINUTES * 60_000);
   const lots = await prisma.investment.findMany({
-    where: { userId, company: stockKey },
+    where: { userId, company: stockKey, boughtAt: { lte: settledBefore } },
     orderBy: { boughtAt: "asc" },
   });
-  const owned = lots.reduce((sum, lot) => sum + lot.shares, 0);
-  if (shares > owned) {
-    throw new RangeError(`You only own ${owned} share(s) of ${displayName(row)}.`);
+  const settled = lots.reduce((sum, lot) => sum + lot.shares, 0);
+  if (shares > settled) {
+    throw new RangeError(
+      `You only have ${settled} settled share(s) of ${displayName(row)} — ` +
+        `freshly bought shares unlock ${SETTLEMENT_MINUTES} minutes after purchase.`
+    );
   }
 
   await getPrices();
   const fresh = await prisma.stock.findUnique({ where: { key: stockKey } });
-  const price = fresh!.price;
+
+  // Your own sell-off moves the market BEFORE you get paid — dumping a big
+  // position crashes your own execution price.
+  const impact = Math.min(MAX_IMPACT, IMPACT_PER_SHARE * shares);
+  const executionPrice = clampPrice(Math.round(fresh!.price * (1 - impact)), fresh!.basePrice);
+  await prisma.stock.update({
+    where: { key: stockKey },
+    data: { prevPrice: fresh!.price, price: executionPrice, updatedAt: new Date() },
+  });
 
   // Take shares from the oldest lots first, tracking what they originally cost.
   let toSell = shares;
@@ -221,12 +243,22 @@ export async function sellShares(
     }
   }
 
+  const gross = executionPrice * shares;
+  const fee = Math.round(gross * BROKER_FEE);
   const rate = currency.key === "coins" ? await getExchangeRate() : 1;
-  const proceeds = toLocal(price * shares, currency, rate); // paid out locally
+  const proceeds = toLocal(gross - fee, currency, rate); // paid out locally
+  const localFee = toLocal(fee, currency, rate);
   const localCostBasis = toLocal(costBasis, currency, rate);
   await addCash(userId, proceeds, `Stock Sale (${row.name})`, currency);
-  await applyTradeImpact(fresh!, shares, -1); // sell-off pushes the price down
-  return { price, proceeds, costBasis: localCostBasis, profit: proceeds - localCostBasis, row, currency };
+  return {
+    price: executionPrice,
+    proceeds,
+    fee: localFee,
+    costBasis: localCostBasis,
+    profit: proceeds - localCostBasis,
+    row,
+    currency,
+  };
 }
 
 export interface Holding {
@@ -267,6 +299,43 @@ export async function getPortfolio(userId: string): Promise<Holding[]> {
       profit: value - entry.costBasis,
     };
   });
+}
+
+// ---------------- Government funding (from taxes) ----------------
+// Collected income tax "funds" a random listed company: its stock price gets
+// a small boost. How much depends on the company's genre — governments love
+// subsidizing energy and space programs; meme funds get scraps.
+
+const SUBSIDY_FACTOR: Record<string, number> = {
+  space: 1.5,
+  energy: 1.4,
+  tech: 1.3,
+  gaming: 1.1,
+  food: 1.0,
+  media: 1.0,
+  fashion: 0.9,
+  crypto: 0.8,
+  meme: 0.6,
+};
+const MAX_FUNDING_BOOST = 0.03; // at most +3% per tax payment
+
+/** Spends tax money on a random company. Returns who got funded (or null). */
+export async function fundCompanyWithTax(taxCashWorth: number) {
+  if (taxCashWorth <= 0) return null;
+  const rows = await prisma.stock.findMany();
+  if (rows.length === 0) return null;
+
+  const row = rows[Math.floor(Math.random() * rows.length)];
+  const factor = SUBSIDY_FACTOR[row.genre] ?? 1;
+  const boost = Math.min(MAX_FUNDING_BOOST, (taxCashWorth / 25_000) * factor);
+  const newPrice = clampPrice(Math.round(row.price * (1 + boost)), row.basePrice);
+  if (newPrice !== row.price) {
+    await prisma.stock.update({
+      where: { key: row.key },
+      data: { prevPrice: row.price, price: newPrice },
+    });
+  }
+  return { name: displayName(row) };
 }
 
 // ---------------- Player-founded companies ----------------

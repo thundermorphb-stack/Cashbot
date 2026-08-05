@@ -145,8 +145,8 @@ export const trivia: Command = {
           ],
           components: [makeButtons({ revealCorrect: true })],
         });
-        if (paid.garnishNote) {
-          await click.followUp({ content: paid.garnishNote.trim() }).catch(() => {});
+        if (paid.taxNote || paid.garnishNote) {
+          await click.followUp({ content: (paid.taxNote + paid.garnishNote).trim() }).catch(() => {});
         }
       } else {
         await click.update({

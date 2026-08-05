@@ -211,6 +211,7 @@ export const math: Command = {
       await submitted.reply(
         `✅ **Correct!** \`${question}\` = **${answer}**\n` +
           `${interaction.user} earned **${paid.total} ${currency.emoji} ${currency.name}**${bonusNote}!` +
+          paid.taxNote +
           paid.garnishNote
       );
     } else {

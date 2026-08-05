@@ -47,7 +47,8 @@ Setup: invite the same bot to the sister server, put its ID in `.env` as
 | `/casino set` | (Admins) mark the current channel as the casino |
 | `/gamble coinflip bet side` | Heads or tails (easiest) — win 1.9× your bet |
 | `/gamble number bet guess` | Guess 1–3 (harder) — win 2.8× your bet |
-| `/gamble cards bet rank color suit` | Hardest: rank +250%, suit +60%, color +25%, misses −25% (×0.25 up to ×4.35) |
+| `/gamble blackjack bet` | Beat the dealer to 21 — win 2×, natural blackjack 2.5× |
+| `/gamble cards bet rank color suit` | Hardest: rank +350%, suit +80%, color +30%, misses −25% (×0.25 up to ×5.6) |
 
 Gambling only works in the marked casino channel. The house edge slowly
 removes CASH from circulation, which keeps inflation in check.
@@ -100,6 +101,13 @@ their investors are paid out. No two companies can share a name.
 
 ### Economy rules
 - New members start with **500 CASH** automatically.
+- **Progressive income tax** on everything earned: 0% under 5,000 on hand,
+  10% under 20,000, 20% under 50,000, 30% above. Collected tax funds a
+  random company's stock — subsidies depend on genre (space and energy get
+  the most, meme funds the least).
+- **Stock trading is deliberately costly**: new shares are locked for
+  30 minutes, your own sell-off crashes the execution price, and the broker
+  takes 5% of every sale.
 - Every money movement is logged with a reason and currency in the database.
 - All money is carried on hand — and anything on hand can be stolen.
   Security items are your only protection.

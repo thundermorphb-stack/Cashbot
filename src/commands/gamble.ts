@@ -5,7 +5,15 @@
 //   /gamble cards bet rank color suit — guess the hidden card:
 //        each correct part +25%, each wrong part -25% (×0.25 to ×1.75)
 
-import { EmbedBuilder, MessageFlags, SlashCommandBuilder } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType,
+  EmbedBuilder,
+  MessageFlags,
+  SlashCommandBuilder,
+} from "discord.js";
 import type { Command } from "../types.ts";
 import { addCash, canAfford, removeCash } from "../lib/economy.ts";
 import { currencyForGuild, fmt } from "../lib/currency.ts";
@@ -25,6 +33,15 @@ import {
   playNumberGuess,
   type Suit,
 } from "../lib/casino.ts";
+import {
+  dealerPlay,
+  formatHand,
+  handValue,
+  isBlackjack,
+  settle,
+  NATURAL_PAYOUT,
+  WIN_PAYOUT,
+} from "../lib/blackjack.ts";
 
 function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -70,8 +87,14 @@ export const gamble: Command = {
     )
     .addSubcommand((sub) =>
       sub
+        .setName("blackjack")
+        .setDescription(`Beat the dealer to 21 — win ${WIN_PAYOUT}×, natural blackjack ${NATURAL_PAYOUT}×`)
+        .addIntegerOption(betOption)
+    )
+    .addSubcommand((sub) =>
+      sub
         .setName("cards")
-        .setDescription("Guess the hidden card: rank +250%, suit +60%, color +25% — misses -25%")
+        .setDescription("Guess the hidden card: rank +350%, suit +80%, color +30% — misses -25%")
         .addIntegerOption(betOption)
         .addIntegerOption((option) =>
           option
@@ -163,6 +186,118 @@ export const gamble: Command = {
                   : `Gone. Just like that.`)
             ),
         ],
+      });
+      return;
+    }
+
+    // ---- Game 4: blackjack ----
+    if (sub === "blackjack") {
+      await removeCash(userId, bet, "Casino: Blackjack", currency);
+
+      const player = [drawCard(), drawCard()];
+      const dealer = [drawCard(), drawCard()];
+
+      const table = (opts: { done: boolean; note?: string; color?: number }) =>
+        new EmbedBuilder()
+          .setColor(opts.color ?? 0x34495e)
+          .setTitle(`🂡 Blackjack — ${bet.toLocaleString()} ${currency.emoji} on the table`)
+          .setDescription(
+            `**Dealer:** ${formatHand(dealer, !opts.done)}\n` +
+              `**${interaction.user.displayName}:** ${formatHand(player)}` +
+              (opts.note ? `\n\n${opts.note}` : "")
+          );
+
+      const buttons = (disabled = false) =>
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`bj-hit-${interaction.id}`)
+            .setLabel("Hit")
+            .setEmoji("🃏")
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(disabled),
+          new ButtonBuilder()
+            .setCustomId(`bj-stand-${interaction.id}`)
+            .setLabel("Stand")
+            .setEmoji("✋")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(disabled)
+        );
+
+      // Finish the round: dealer plays, bets are settled, table is revealed.
+      const finish = async (edit: (payload: object) => Promise<unknown>) => {
+        if (handValue(player) <= 21 && !isBlackjack(player)) {
+          dealer.push(...dealerPlay(dealer).slice(dealer.length));
+        }
+        const outcome = settle(bet, player, dealer);
+        if (outcome.payout > 0) {
+          await addCash(userId, outcome.payout, "Casino Win: Blackjack", currency);
+        }
+        const note =
+          outcome.result === "blackjack"
+            ? `♠️ **BLACKJACK!** Paid **${fmt(outcome.payout, currency)}** (${NATURAL_PAYOUT}×)!`
+            : outcome.result === "win"
+              ? `🎉 **You win ${fmt(outcome.payout, currency)}!**`
+              : outcome.result === "push"
+                ? `🤝 **Push.** Your ${fmt(bet, currency)} bet is returned.`
+                : handValue(player) > 21
+                  ? `💥 **Bust!** The house takes your ${fmt(bet, currency)}.`
+                  : `🎩 **Dealer wins.** Your ${fmt(bet, currency)} is gone.`;
+        const color =
+          outcome.result === "blackjack" || outcome.result === "win"
+            ? 0x2ecc71
+            : outcome.result === "push"
+              ? 0x95a5a6
+              : 0xe74c3c;
+        await edit({ embeds: [table({ done: true, note, color })], components: [buttons(true)] });
+      };
+
+      // Natural 21 off the deal? Settle immediately.
+      if (isBlackjack(player)) {
+        await interaction.deferReply();
+        await finish((payload) => interaction.editReply(payload));
+        return;
+      }
+
+      const reply = await interaction.reply({
+        embeds: [table({ done: false })],
+        components: [buttons()],
+        withResponse: true,
+      });
+      const message = reply.resource!.message!;
+
+      const collector = message.createMessageComponentCollector({
+        componentType: ComponentType.Button,
+        time: 60_000,
+      });
+
+      collector.on("collect", async (click) => {
+        if (click.user.id !== userId) {
+          await click.reply({
+            content: "This isn't your table — start your own hand with /gamble blackjack!",
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+
+        if (click.customId === `bj-hit-${interaction.id}`) {
+          player.push(drawCard());
+          if (handValue(player) >= 21) {
+            collector.stop("done"); // bust or 21 — either way the hand is over
+            await finish((payload) => click.update(payload));
+          } else {
+            await click.update({ embeds: [table({ done: false })], components: [buttons()] });
+          }
+          return;
+        }
+
+        collector.stop("done"); // stand
+        await finish((payload) => click.update(payload));
+      });
+
+      collector.on("end", async (_collected, reason) => {
+        if (reason === "done") return;
+        // Walked away from the table — auto-stand.
+        await finish((payload) => interaction.editReply(payload)).catch(() => {});
       });
       return;
     }

@@ -5,10 +5,12 @@
 import { prisma } from "../src/lib/db.ts";
 import {
   addCash,
+  addEarnings,
   removeCash,
   canAfford,
   computeDonation,
   getOrCreateUser,
+  taxRateForWealth,
   STARTING_BALANCE,
   DONATION_TAX_MIN_PCT,
   DONATION_TAX_MAX_PCT,
@@ -110,6 +112,17 @@ for (const t of logbook) {
   const sign = t.amount > 0 ? "+" : "";
   console.log(`  ${sign}${t.amount} CASH — ${t.reason}`);
 }
+
+// 8. Progressive income tax: the rich pay, the poor don't.
+check("under 5,000 → 0% tax", taxRateForWealth(1_000) === 0);
+check("5,000-20,000 → 10% tax", taxRateForWealth(5_000) === 0.1 && taxRateForWealth(19_999) === 0.1);
+check("20,000-50,000 → 20% tax", taxRateForWealth(30_000) === 0.2);
+check("50,000+ → 30% tax", taxRateForWealth(100_000) === 0.3);
+
+await addCash(TEST_ID, 60_000, "Tax Test Funding"); // make the test user rich
+const taxed = await addEarnings(TEST_ID, 100, "Tax Test");
+check("a rich earner pays 30% tax on 100 (keeps 70)", taxed.tax === 30 && taxed.total === 70);
+check("the tax note names the rate", taxed.taxNote.includes("30%"));
 
 // Clean up.
 await prisma.transaction.deleteMany({ where: { userId: TEST_ID } });

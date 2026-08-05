@@ -33,19 +33,19 @@ check("coinflip loss pays 0", playCoinflip(100, "heads", "tails").payout === 0);
 // ---- Cards: every combination of right/wrong parts ----
 const card = { rank: 12, suit: "hearts" } as const; // Q♥️ (red)
 
-// Difficulty-scaled rewards: rank +250% (1-in-13), suit +60% (1-in-4),
-// color +25% (1-in-2); every miss -25%.
+// Difficulty-scaled rewards: rank +350% (1-in-13), suit +80% (1-in-4),
+// color +30% (1-in-2); every miss -25%.
 const allRight = playCards(400, { rank: 12, color: "red", suit: "hearts" }, card);
-check("all 3 correct → ×4.35 jackpot (1740 back from 400)", allRight.multiplier === 4.35 && allRight.payout === 1740);
+check("all 3 correct → ×5.6 jackpot (2240 back from 400)", allRight.multiplier === 5.6 && allRight.payout === 2240);
 
 const colorSuit = playCards(400, { rank: 5, color: "red", suit: "hearts" }, card);
-check("color+suit right, rank wrong → ×1.6 (640 back)", colorSuit.multiplier === 1.6 && colorSuit.payout === 640);
+check("color+suit right, rank wrong → ×1.85 (740 back)", colorSuit.multiplier === 1.85 && colorSuit.payout === 740);
 
 const colorOnly = playCards(400, { rank: 5, color: "red", suit: "spades" }, card);
-check("only color right → ×0.75 (300 back)", colorOnly.multiplier === 0.75 && colorOnly.payout === 300);
+check("only color right → ×0.8 (320 back)", colorOnly.multiplier === 0.8 && colorOnly.payout === 320);
 
 const rankOnly = playCards(400, { rank: 12, color: "black", suit: "spades" }, card);
-check("only rank right → ×3.0 (1200 back)", rankOnly.multiplier === 3 && rankOnly.payout === 1200);
+check("only rank right → ×4.0 (1600 back)", rankOnly.multiplier === 4 && rankOnly.payout === 1600);
 
 const allWrong = playCards(400, { rank: 5, color: "black", suit: "spades" }, card);
 check("0 correct → ×0.25 (100 back)", allWrong.multiplier === 0.25 && allWrong.payout === 100);
@@ -66,6 +66,30 @@ for (let i = 0; i < 10_000; i++) {
   if (drawn.rank < 1 || drawn.rank > 13) drawsValid = false;
 }
 check("10,000 drawn cards all have valid ranks 1-13", drawsValid);
+
+// ---- Blackjack rules ----
+const { handValue, isBlackjack, dealerPlay, settle } = await import("../src/lib/blackjack.ts");
+const ace = { rank: 1, suit: "spades" } as const;
+const king = { rank: 13, suit: "hearts" } as const;
+const nine = { rank: 9, suit: "clubs" } as const;
+const five = { rank: 5, suit: "diamonds" } as const;
+
+check("A + K = 21 and is a natural blackjack", handValue([ace, king]) === 21 && isBlackjack([ace, king]));
+check("A + 9 counts the ace as 11 (20)", handValue([ace, nine]) === 20);
+check("K + 9 + A demotes the ace to 1 (20)", handValue([king, nine, ace]) === 20);
+check("A + A + 9 = 21", handValue([ace, ace, nine]) === 21);
+check("K + 9 + 5 busts at 24", handValue([king, nine, five]) === 24);
+check("21 with three cards is NOT a natural", !isBlackjack([ace, ace, nine]));
+
+check("natural blackjack pays 2.5× (250)", settle(100, [ace, king], [king, nine]).payout === 250);
+check("normal win pays 2× (200)", settle(100, [king, nine], [king, five]).payout === 200);
+check("push refunds the bet", settle(100, [king, nine], [nine, king]).payout === 100);
+check("player bust loses even if dealer would bust too", settle(100, [king, nine, five], [king, nine, five]).payout === 0);
+check("dealer bust pays the player", settle(100, [king, five], [king, nine, five]).payout === 200);
+
+const dealerHand = dealerPlay([king, five], () => 0.999); // forced high draws
+check("dealer always draws to 17 or more", handValue(dealerHand) >= 17);
+check("dealer stands pat on 17+", dealerPlay([king, nine]).length === 2);
 
 // ---- Casino channel setting ----
 await setSetting("casino_channel", "123456789");

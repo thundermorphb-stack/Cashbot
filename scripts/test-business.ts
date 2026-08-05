@@ -78,6 +78,10 @@ check("founder actually received the cut", founderRich!.wallet === 200_500 - 50_
 const selfBuy = await buyShares(FOUNDER, company.row.key, 1);
 check("no founder's cut when investing in your own company", selfBuy.founderCut === 0);
 
+await prisma.investment.updateMany({
+  where: { userId: INVESTOR },
+  data: { boughtAt: new Date(Date.now() - 31 * 60_000) }, // age past settlement
+});
 const sellPriceBefore = (await prisma.stock.findUnique({ where: { key: company.row.key } }))!.price;
 await sellShares(INVESTOR, company.row.key, 20);
 const afterSell = await prisma.stock.findUnique({ where: { key: company.row.key } });
