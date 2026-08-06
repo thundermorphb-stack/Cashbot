@@ -9,6 +9,7 @@ import { prisma } from "./lib/db.ts";
 import { log } from "./logger.ts";
 import { startDrops } from "./features/drops.ts";
 import { startExpirySweeper } from "./features/expiry.ts";
+import { startWealthTax } from "./features/wealthtax.ts";
 import { ensureShopItems } from "./lib/shop.ts";
 import { ensureStocks } from "./lib/stocks.ts";
 import type { Command } from "./types.ts";
@@ -34,6 +35,7 @@ client.once(Events.ClientReady, async (readyClient) => {
     readyClient,
     [config.guildId, config.coinsGuildId].filter((id): id is string => id !== null)
   );
+  startWealthTax(); // the daily 5% levy on fortunes above 100k
 });
 
 // Runs every time someone uses a slash command.

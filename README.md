@@ -106,8 +106,13 @@ their investors are paid out. No two companies can share a name.
   random company's stock — subsidies depend on genre (space and energy get
   the most, meme funds the least).
 - **Stock trading is deliberately costly**: new shares are locked for
-  30 minutes, your own sell-off crashes the execution price, and the broker
-  takes 5% of every sale.
+  30 minutes, your own trades move the price against you (buys execute
+  higher, sells lower), and the broker takes 5% of every sale.
+- **The market prints no free money**: prices have no upward drift and are
+  pulled ~5% back toward their base every step, so pumped prices deflate.
+  Profit comes from timing swings, not from holding.
+- **Wealth tax**: once a day, money on hand above 100,000 CASH-worth is
+  taxed 5% of the excess. Fortunes melt unless they're put to work.
 - Every money movement is logged with a reason and currency in the database.
 - All money is carried on hand — and anything on hand can be stolen.
   Security items are your only protection.

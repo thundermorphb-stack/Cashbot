@@ -37,9 +37,15 @@ let price = def.basePrice;
 for (let i = 0; i < 10_000; i++) {
   price = nextPrice(price, def.basePrice, def.volatility);
   const floor = Math.max(5, Math.round(def.basePrice * 0.25));
-  if (price < floor || price > def.basePrice * 20) priceInBounds = false;
+  if (price < floor || price > def.basePrice * 8) priceInBounds = false;
 }
-check("10,000 price steps never leave the 25%-2000% guard rails", priceInBounds);
+check("10,000 price steps never leave the 25%-800% guard rails", priceInBounds);
+
+// No more money printer: no upward drift, and pumped prices deflate.
+const neutralRng = () => 0.51; // makes the random part exactly zero
+check("no free upward drift at the base price", nextPrice(100, 100, 0.12, () => 0.5) <= 100);
+check("pumped prices get pulled back toward base (200 → 195)", nextPrice(200, 100, 0.12, neutralRng) === 195);
+check("crashed prices recover toward base (50 → 53)", nextPrice(50, 100, 0.12, neutralRng) === 53);
 
 // ---- Buying and selling ----
 await addCash(TEST_ID, 100_000, "Test Funding");

@@ -66,10 +66,14 @@ try {
 }
 check("a player can't run more than 2 companies", thirdBlocked);
 
-// ---- Demand moves prices ----
+// ---- Demand moves prices (and you PAY the moved price) ----
+const preBuyPrice = (await prisma.stock.findUnique({ where: { key: company.row.key } }))!.price;
 const buy = await buyShares(INVESTOR, company.row.key, 20);
 const afterBuy = await prisma.stock.findUnique({ where: { key: company.row.key } });
-check("a 20-share buy pushes the price up ~10%", afterBuy!.price === Math.round(buy.price * 1.1));
+check(
+  "a 20-share buy executes ~10% above the old price (no cheap pumping)",
+  buy.price === Math.round(preBuyPrice * 1.1) && afterBuy!.price === buy.price
+);
 
 // ---- Founder's cut ----
 check(`founder's cut is ${FOUNDER_CUT * 100}% of the investment`, buy.founderCut === Math.round(buy.cost * FOUNDER_CUT));

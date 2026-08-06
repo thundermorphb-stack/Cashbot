@@ -124,6 +124,17 @@ const taxed = await addEarnings(TEST_ID, 100, "Tax Test");
 check("a rich earner pays 30% tax on 100 (keeps 70)", taxed.tax === 30 && taxed.total === 70);
 check("the tax note names the rate", taxed.taxNote.includes("30%"));
 
+// 9. Wealth tax: fortunes above 100,000 pay 5% of the excess daily.
+const { computeWealthTax, taxUserWealth } = await import("../src/features/wealthtax.ts");
+check("no wealth tax at or below 100,000", computeWealthTax(100_000) === 0 && computeWealthTax(50_000) === 0);
+check("150,000 on hand → 2,500 wealth tax", computeWealthTax(150_000) === 2_500);
+check("300,000 on hand → 10,000 wealth tax", computeWealthTax(300_000) === 10_000);
+
+await prisma.user.update({ where: { id: TEST_ID }, data: { wallet: 150_000, coins: 0 } });
+const wealthPaid = await taxUserWealth({ id: TEST_ID, wallet: 150_000, coins: 0 }, 1);
+const afterWealthTax = await prisma.user.findUnique({ where: { id: TEST_ID } });
+check("the wealth tax actually collects (150k → 147.5k)", wealthPaid === 2_500 && afterWealthTax!.wallet === 147_500);
+
 // Clean up.
 await prisma.transaction.deleteMany({ where: { userId: TEST_ID } });
 await prisma.user.deleteMany({ where: { id: TEST_ID } });

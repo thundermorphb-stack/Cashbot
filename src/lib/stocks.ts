@@ -48,21 +48,30 @@ export function displayName(row: { name: string; genre: string }): string {
   return `${genreEmoji(row.genre)} ${row.name}`;
 }
 
-/** One random price step. Slight upward drift: -96% to +104% of volatility. */
+/** How strongly prices get pulled back toward their base each step. */
+const MEAN_REVERSION = 0.05;
+
+/**
+ * One random price step. No free lunch: the random part has a TINY negative
+ * drift (the market's "house edge"), and gravity pulls every price 5% back
+ * toward its base — so pumped prices deflate on their own. Buy-and-hold is
+ * no longer a money printer; you profit by timing swings, like real trading.
+ */
 export function nextPrice(
   price: number,
   basePrice: number,
   volatility: number,
   rng: () => number = Math.random
 ): number {
-  const changePct = (rng() * 2 - 0.96) * volatility;
-  const moved = Math.round(price * (1 + changePct));
+  const changePct = (rng() * 2 - 1.02) * volatility;
+  const reverted = price + (basePrice - price) * MEAN_REVERSION;
+  const moved = Math.round(reverted * (1 + changePct));
   return clampPrice(moved, basePrice);
 }
 
 function clampPrice(price: number, basePrice: number): number {
   const floor = Math.max(5, Math.round(basePrice * 0.25));
-  const ceiling = Math.round(basePrice * 20); // demand can pump far above base
+  const ceiling = Math.round(basePrice * 8); // hype has limits now
   return Math.min(ceiling, Math.max(floor, price));
 }
 
@@ -136,19 +145,10 @@ export async function searchStocks(query: string, limit = 25) {
   });
 }
 
-/** Demand: buys push the price up, sells push it down. */
-async function applyTradeImpact(row: StockRow, shares: number, direction: 1 | -1) {
-  const impact = Math.min(MAX_IMPACT, IMPACT_PER_SHARE * shares);
-  const newPrice = clampPrice(Math.round(row.price * (1 + direction * impact)), row.basePrice);
-  await prisma.stock.update({
-    where: { key: row.key },
-    data: { prevPrice: row.price, price: newPrice, updatedAt: new Date() },
-  });
-}
-
 /**
- * Buys shares at the current (CASH) price, paid in the buyer's local
- * currency. Throws RangeError with a friendly message.
+ * Buys shares, paid in the buyer's local currency. Your own demand moves the
+ * market BEFORE you pay — big buys execute at the pumped price, so you can't
+ * pump a stock cheaply.
  */
 export async function buyShares(
   userId: string,
@@ -159,8 +159,11 @@ export async function buyShares(
   await getPrices();
   const row = await prisma.stock.findUnique({ where: { key: stockKey } });
   if (!row) throw new RangeError("That company isn't listed (anymore).");
+
+  const impact = Math.min(MAX_IMPACT, IMPACT_PER_SHARE * shares);
+  const executionPrice = clampPrice(Math.round(row.price * (1 + impact)), row.basePrice);
   const rate = currency.key === "coins" ? await getExchangeRate() : 1;
-  const cost = toLocal(row.price * shares, currency, rate); // what the buyer pays, locally
+  const cost = toLocal(executionPrice * shares, currency, rate); // what the buyer pays, locally
 
   if (!(await canAfford(userId, cost, currency))) {
     throw new RangeError(
@@ -170,7 +173,7 @@ export async function buyShares(
 
   await removeCash(userId, cost, `Stock Purchase (${row.name})`, currency);
   await prisma.investment.create({
-    data: { userId, company: stockKey, shares, buyPrice: row.price },
+    data: { userId, company: stockKey, shares, buyPrice: executionPrice },
   });
 
   // The founder earns a cut when OTHER players invest in their company.
@@ -181,8 +184,11 @@ export async function buyShares(
       await addCash(row.ownerId, founderCut, `Founder's Cut (${row.name})`, currency);
   }
 
-  await applyTradeImpact(row, shares, 1); // demand pushes the price up
-  return { price: row.price, cost, row, founderCut, currency };
+  await prisma.stock.update({
+    where: { key: stockKey },
+    data: { prevPrice: row.price, price: executionPrice, updatedAt: new Date() },
+  });
+  return { price: executionPrice, cost, row, founderCut, currency };
 }
 
 /**
